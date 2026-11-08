@@ -46,6 +46,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -152,6 +153,19 @@ fun MapScreen(
                 GeofenceCreateEvent.GeneralError -> geofenceErrorMessage
             }
             coroutineScope.launch { snackbarHostState.showSnackbar(message) }
+        }
+    }
+
+    // Actualización en vivo del recorrido de hoy solo con esta pestaña en pantalla.
+    DisposableEffect(Unit) {
+        viewModel.onMapVisibilityChanged(true)
+        onDispose { viewModel.onMapVisibilityChanged(false) }
+    }
+
+    val refreshFailedMessage = stringResource(R.string.today_track_refresh_failed)
+    LaunchedEffect(Unit) {
+        viewModel.todayRefreshFailed.collect {
+            coroutineScope.launch { snackbarHostState.showSnackbar(refreshFailedMessage) }
         }
     }
 
@@ -328,9 +342,17 @@ fun MapScreen(
     // Misma instancia mientras no cambie el recorrido: el engine memoiza la simplificación por
     // identidad de la lista de polilíneas.
     val trackSelectedLeg = todayTrack?.selectedLegIndex
-    val routeOverlay = remember(todayTrack?.mapData, trackSelectedLeg) {
+    // Solo cambia cuando entra un punto en vivo (provisional) o se refresca el recorrido: la lista de
+    // polilíneas conserva su identidad, así el motor no recalcula la simplificación cada 7 s.
+    val trackProvisional = todayTrack?.provisional
+    val routeOverlay = remember(todayTrack?.mapData, trackSelectedLeg, trackProvisional, todayTrack?.route) {
         todayTrack?.mapData?.let {
-            RouteOverlay(polylines = it.polylines, markers = it.markers, selectedLegIndex = trackSelectedLeg)
+            RouteOverlay(
+                polylines = it.polylines,
+                markers = it.markers,
+                selectedLegIndex = trackSelectedLeg,
+                provisionalPath = todayTrack.provisionalPath()
+            )
         }
     }
 

@@ -210,7 +210,7 @@ private fun isRoundTripAtSameStop(firstLeg: HistoryLeg?, lastLeg: HistoryLeg?): 
     return distanceMeters(start, end) <= SAME_LOCATION_THRESHOLD_METERS
 }
 
-private fun distanceMeters(a: GeoPoint, b: GeoPoint): Double {
+internal fun distanceMeters(a: GeoPoint, b: GeoPoint): Double {
     val earthRadiusMeters = 6_371_000.0
     val dLat = Math.toRadians(b.lat - a.lat)
     val dLng = Math.toRadians(b.lng - a.lng)

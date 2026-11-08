@@ -46,7 +46,10 @@ data class RouteOverlay(
     val polylines: List<RoutePolyline>,
     val markers: List<RouteMarkerData>,
     // Tramo resaltado (mismo legIndex que RoutePolyline/RouteMarkerData); null = ninguno.
-    val selectedLegIndex: Int? = null
+    val selectedLegIndex: Int? = null,
+    // Polilínea provisional (puntos en vivo aún no cubiertos por el recorrido, ya con el ancla del
+    // final del recorrido como primer punto); vacía = nada que dibujar.
+    val provisionalPath: List<GeoPoint> = emptyList()
 )
 
 /**

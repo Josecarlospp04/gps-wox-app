@@ -7,6 +7,7 @@ import pe.soltelematic.mobile.ui.history.CameraTarget
 import pe.soltelematic.mobile.ui.history.RouteMapData
 import pe.soltelematic.mobile.ui.history.cameraTargetFor
 import pe.soltelematic.mobile.ui.map.engine.MapMarkerData
+import java.time.LocalDate
 
 enum class TodayTrackStatus { LOADING, READY, EMPTY, ERROR }
 
@@ -33,7 +34,11 @@ data class TodayTrackState(
     val panelExpanded: Boolean = false,
     val selectedLegIndex: Int? = null,
     val legFocusRequestId: Int = 0,
-    val addresses: Map<Int, AddressResolution> = emptyMap()
+    val addresses: Map<Int, AddressResolution> = emptyMap(),
+    // Etapa 3 (ver TodayTrackLive.kt): puntos del sondeo aún no cubiertos por getTodayRoute y día
+    // al que pertenece el recorrido cargado (para detectar el cruce de medianoche).
+    val provisional: List<ProvisionalPoint> = emptyList(),
+    val dayDate: LocalDate = LocalDate.now()
 )
 
 /** Solo se despliega la lista cuando hay recorrido (READY); plegar siempre es posible. */

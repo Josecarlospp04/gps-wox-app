@@ -39,6 +39,7 @@
     <string name="today_track_error">No se pudo cargar el recorrido</string>
     <string name="today_track_retry">Reintentar</string>
     <string name="today_track_suggestion_action">Ver recorrido de hoy</string>
+    <string name="today_track_refresh_failed">No se pudo actualizar el recorrido</string>
     <string name="today_track_open_history">Ver historial completo</string>
     <string name="today_track_panel_expand">Desplegar la lista de tramos</string>
     <string name="today_track_panel_collapse">Plegar la lista de tramos</string>

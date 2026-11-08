@@ -1,11 +1,19 @@
 package pe.soltelematic.mobile.ui.map
 
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -13,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import pe.soltelematic.mobile.core.navigation.MapFocusRequestBus
 import pe.soltelematic.mobile.core.network.RealtimePoller
 import pe.soltelematic.mobile.core.network.SocketRealtimeClient
@@ -33,6 +42,12 @@ import pe.soltelematic.mobile.domain.repository.AssetRepository
 import pe.soltelematic.mobile.domain.repository.GeofencesRepository
 import pe.soltelematic.mobile.ui.history.AddressResolution
 import pe.soltelematic.mobile.ui.history.toRouteMapData
+import java.time.Instant
+import java.time.LocalDate
+
+// Refresco completo del recorrido de hoy mientras dura el modo (los puntos entre refrescos llegan
+// por el sondeo de 7 s, ver withLivePoint).
+private const val TODAY_REFRESH_INTERVAL_MS = 60_000L
 
 class MapViewModel(
     private val assetRepository: AssetRepository,
@@ -84,6 +99,27 @@ class MapViewModel(
     private val _geofenceCreateEvent = MutableSharedFlow<GeofenceCreateEvent>(extraBufferCapacity = 1)
     val geofenceCreateEvent: SharedFlow<GeofenceCreateEvent> = _geofenceCreateEvent.asSharedFlow()
 
+    // Actualización en vivo del recorrido de hoy (etapa 3). El bucle solo corre con el modo activo, la
+    // app en primer plano y la pestaña Mapa visible (ver init). Mismo patrón de ProcessLifecycleOwner
+    // que RealtimePoller / HistoryViewModel.
+    private val isForeground = MutableStateFlow(true)
+    private val mapVisible = MutableStateFlow(false)
+    private val refreshNow = Channel<Unit>(Channel.CONFLATED)
+    private var liveLoopAssetId: Int? = null
+    private var lastRefreshFailed = false
+    private var lastTrackedId: Int? = null
+    private var lastTrackedMoving: Boolean? = null
+
+    private val lifecycleObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) { isForeground.value = true }
+        override fun onStop(owner: LifecycleOwner) { isForeground.value = false }
+    }
+
+    private val _todayRefreshFailed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Un refresco falló (una sola vez hasta que otro tenga éxito): aviso discreto, sin tocar el panel. */
+    val todayRefreshFailed: SharedFlow<Unit> = _todayRefreshFailed.asSharedFlow()
+
     private val _geofenceDeleteEvent = MutableSharedFlow<GeofenceDeleteEvent>(extraBufferCapacity = 1)
     val geofenceDeleteEvent: SharedFlow<GeofenceDeleteEvent> = _geofenceDeleteEvent.asSharedFlow()
 
@@ -100,7 +136,25 @@ class MapViewModel(
                 }
                 triggerAutoFitIfNeeded()
                 resolvePendingFocusIfNeeded(assets)
+                onAssetsUpdatedForTrack(assets)
             }
+        }
+        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+        viewModelScope.launch {
+            combine(
+                _uiState.map { it.todayTrack?.assetId }.distinctUntilChanged(),
+                isForeground,
+                mapVisible
+            ) { id, foreground, visible -> if (id != null && foreground && visible) id else null }
+                .distinctUntilChanged()
+                .collectLatest { id ->
+                    if (id == null) return@collectLatest
+                    // Mismo id que el bucle anterior = se reanudó (primer plano / pestaña): refresco
+                    // inmediato. Id nuevo = la carga inicial ya está en camino, no se duplica.
+                    val resumed = id == liveLoopAssetId
+                    liveLoopAssetId = id
+                    liveLoop(id, refreshFirst = resumed)
+                }
         }
         viewModelScope.launch {
             unseenEventsPoller.unseenCount.collect { count ->
@@ -136,6 +190,7 @@ class MapViewModel(
     }
 
     override fun onCleared() {
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
         socketRealtimeClient.stop()
     }
 
@@ -478,8 +533,79 @@ class MapViewModel(
         }
     }
 
+    /** MapScreen entra/sale de composición: fuera de la pestaña Mapa no hay refrescos. */
+    fun onMapVisibilityChanged(visible: Boolean) {
+        mapVisible.value = visible
+    }
+
+    // Puntos en vivo y cambio movimiento <-> detenida de la unidad seguida, desde lo que ya observa
+    // este ViewModel (Room, alimentado por el sondeo de 7 s): no hay ninguna llamada de red propia.
+    private fun onAssetsUpdatedForTrack(assets: List<Asset>) {
+        val track = _uiState.value.todayTrack
+        if (track == null) {
+            lastTrackedId = null
+            lastTrackedMoving = null
+            return
+        }
+        val asset = assets.firstOrNull { it.id == track.assetId } ?: return
+        val moving = asset.status.type == AssetStatusType.ONLINE
+        if (lastTrackedId != track.assetId) {
+            lastTrackedId = track.assetId
+            lastTrackedMoving = moving
+        } else if (lastTrackedMoving != moving) {
+            lastTrackedMoving = moving
+            refreshNow.trySend(Unit)
+        }
+        val position = asset.position ?: return
+        updateTrack { it.withLivePoint(position, asset.lastSeenAt ?: Instant.now()) }
+    }
+
+    private suspend fun liveLoop(id: Int, refreshFirst: Boolean) {
+        refreshNow.tryReceive() // descarta avisos acumulados mientras estaba en pausa
+        var refresh = refreshFirst
+        while (true) {
+            if (refresh) refreshTodayTrack(id)
+            refresh = true
+            // Espera el intervalo, o menos si la unidad cambió de movimiento a detenida (o al revés).
+            withTimeoutOrNull(TODAY_REFRESH_INTERVAL_MS) { refreshNow.receive() }
+        }
+    }
+
+    /**
+     * Refresco completo: NO reencuadra, no toca el panel ni la selección que siga existiendo (ver
+     * withRefreshedRoute). Un fallo conserva lo dibujado y avisa una vez. Si se cruzó la medianoche
+     * se recarga el nuevo día como una carga inicial.
+     */
+    private suspend fun refreshTodayTrack(id: Int) {
+        val track = _uiState.value.todayTrack ?: return
+        if (track.assetId != id) return
+        val today = LocalDate.now()
+        if (track.isStaleDay(today)) {
+            lastRefreshFailed = false
+            updateTrack { it.forNewDay(today) }
+            loadTodayTrack(id)
+            return
+        }
+        if (track.status != TodayTrackStatus.READY && track.status != TodayTrackStatus.EMPTY) return
+        when (val result = assetDetailRepository.getTodayRoute(id)) {
+            is ApiResult.Success -> {
+                val mapData = withContext(Dispatchers.Default) { result.data.toRouteMapData() }
+                lastRefreshFailed = false
+                updateTrack { if (it.assetId == id) it.withRefreshedRoute(result.data, mapData) else it }
+            }
+            is ApiResult.Error -> {
+                if (!lastRefreshFailed) {
+                    lastRefreshFailed = true
+                    _todayRefreshFailed.tryEmit(Unit)
+                }
+            }
+        }
+    }
+
     fun onExitTodayTrack() {
         if (_uiState.value.todayTrack == null) return
+        liveLoopAssetId = null
+        lastRefreshFailed = false
         trackJob?.cancel()
         _uiState.update { it.copy(todayTrack = null, fleetFitRequestId = it.fleetFitRequestId + 1) }
     }

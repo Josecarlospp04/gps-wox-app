@@ -187,6 +187,9 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
         val routeSelectedPolyline = remember(routePolylines, routeSelectedLeg) {
             routePolylines?.firstOrNull { it.legIndex == routeSelectedLeg }
         }
+        val provisionalPath = route?.provisionalPath
+        val provisionalLatLngs = remember(provisionalPath) { provisionalPath?.map { it.toLatLng() }.orEmpty() }
+        val provisionalColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
         val routeRuns = remember(routePolylines, routeSelectedLeg) {
             routePolylines?.filter { it.legIndex != routeSelectedLeg }?.toRenderablePolylineRuns().orEmpty()
         }
@@ -292,6 +295,17 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
                     color = MaterialTheme.colorScheme.primary,
                     width = SELECTED_POLYLINE_WIDTH_PX,
                     zIndex = 0.5f,
+                    clickable = false
+                )
+            }
+            // Continuación en vivo: se recompone sola cuando cambia provisionalPath, sin tocar las
+            // polilíneas simplificadas de arriba (memoizadas por identidad de la lista).
+            if (provisionalLatLngs.size >= 2) {
+                Polyline(
+                    points = provisionalLatLngs,
+                    color = provisionalColor,
+                    width = POLYLINE_WIDTH_PX,
+                    zIndex = 0.25f,
                     clickable = false
                 )
             }
