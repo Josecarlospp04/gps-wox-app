@@ -43,8 +43,8 @@ android {
         applicationId = "pe.gpswox.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.10.0"
+        versionCode = 1
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BASE_URL", "\"$soltelematicBaseUrl\"")
