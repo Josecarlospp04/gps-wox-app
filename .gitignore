@@ -26,6 +26,8 @@ skills-lock.json
 
 # Capturas de depuracion
 *.png
+# Excepción: los PNG de recursos de la app (p. ej. logo de marca) sí se versionan.
+!app/src/main/res/**/*.png
 
 # Keystore de firma de release: nunca se versiona, se referencia desde
 # local.properties (RELEASE_STORE_FILE), ver app/build.gradle.kts y README.

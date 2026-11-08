@@ -5,8 +5,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import pe.soltelematic.mobile.ui.theme.SoltelematicTheme
 
 // BrandBlock llama BrandLogo(brand = null) -- LoginScreen nunca tiene un BrandConfig real (eso
-// solo pasa en "Acerca de", Cuenta), así que estos 4 previews deben mostrar siempre el ícono
-// vectorial local (ic_launcher_foreground, la estrella), nunca el monograma de respaldo.
+// solo pasa en "Acerca de", Cuenta), así que estos 4 previews deben mostrar siempre el logo
+// local (ic_brand_logo, el pin rojo), nunca el monograma de respaldo.
 @Preview(name = "Login - Claro", showBackground = true, heightDp = 800)
 @Composable
 private fun LoginScreenPreviewLight() {

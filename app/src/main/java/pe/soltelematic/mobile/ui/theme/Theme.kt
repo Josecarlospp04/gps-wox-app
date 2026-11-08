@@ -166,9 +166,8 @@ fun SOLTELEMATICTheme(
 
 /**
  * Logo de marca, encajado en un cuadrado de [size] (40dp por defecto). Tres casos, no dos:
- * - brand == null (SOLTELEMATIC por defecto, sin white-label activo): ícono vectorial local del
- *   launcher (`ic_launcher_foreground`, la estrella de seis puntas) -- nunca depende de red, así
- *   que nunca debería caer a un monograma de respaldo.
+ * - brand == null (GPS WOX por defecto, sin white-label activo): logo PNG local (`ic_brand_logo`,
+ *   el pin rojo) -- nunca depende de red, así que nunca debería caer a un monograma de respaldo.
  * - brand.logoUrl != null: intenta el logo remoto del cliente; el monograma con su inicial es
  *   el fallback SOLO mientras carga o si esa carga falla.
  * - brand != null sin logoUrl: monograma directo, no hay nada que cargar.
@@ -177,7 +176,7 @@ fun SOLTELEMATICTheme(
 fun BrandLogo(brand: BrandConfig?, modifier: Modifier = Modifier, size: Dp = 40.dp) {
     when {
         brand == null -> Image(
-            painter = painterResource(R.drawable.ic_launcher_foreground),
+            painter = painterResource(R.drawable.ic_brand_logo),
             contentDescription = DefaultBrandName,
             modifier = modifier.size(size)
         )
