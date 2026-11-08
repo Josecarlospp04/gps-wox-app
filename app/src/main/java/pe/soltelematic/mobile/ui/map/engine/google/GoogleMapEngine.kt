@@ -41,8 +41,10 @@ import com.google.maps.android.compose.MapEffect
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Polygon
+import com.google.maps.android.compose.Marker as MarkerComposable
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -56,6 +58,8 @@ import pe.soltelematic.mobile.ui.map.engine.MapCameraController
 import pe.soltelematic.mobile.ui.map.engine.MapEngine
 import pe.soltelematic.mobile.ui.map.engine.MapMarkerData
 import pe.soltelematic.mobile.ui.map.engine.MapTailData
+import pe.soltelematic.mobile.ui.map.engine.RouteOverlay
+import pe.soltelematic.mobile.ui.theme.LocalSoltelematicColors
 import com.google.maps.android.compose.MapType as GoogleMapType
 
 private const val GEOFENCE_STROKE_WIDTH_PX = 4f
@@ -132,6 +136,7 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
         mapType: MapType,
         draft: GeofenceDraftPreview?,
         tail: MapTailData?,
+        route: RouteOverlay?,
         onCameraGesture: () -> Unit
     ) {
         // Casteo seguro: el único MapCameraController que existe hoy es el que devuelve
@@ -149,6 +154,34 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
         val pillSurfaceArgb = MaterialTheme.colorScheme.surface.toArgb()
         val pillInkArgb = MaterialTheme.colorScheme.onSurface.toArgb()
         val draftPreviewColor = MaterialTheme.colorScheme.primary
+
+        // Recorrido de hoy (ver RouteOverlay): mismo dibujado que el Historial (RouteRendering.kt).
+        // remember FUERA del content lambda de GoogleMap, por la misma razón que en
+        // GoogleRouteMapEngine: ese lambda recompone con cada cambio de estado y Douglas-Peucker no
+        // debe correr de nuevo si las polilíneas no cambiaron.
+        val routeDensity = LocalDensity.current.density
+        val routeStatusMovingArgb = LocalSoltelematicColors.current.statusMoving.toArgb()
+        val routeOnSurfaceArgb = MaterialTheme.colorScheme.onSurface.toArgb()
+        val routeOutlineArgb = MaterialTheme.colorScheme.outline.toArgb()
+        val hasRoute = route != null
+        val routeMarkerIcons = remember(hasRoute, routeDensity, routeStatusMovingArgb, routeOnSurfaceArgb, pillSurfaceArgb, routeOutlineArgb, draftPreviewColor) {
+            if (!hasRoute) {
+                emptyMap()
+            } else {
+                buildRouteMarkerIcons(
+                    density = routeDensity,
+                    palette = RouteMarkerPalette(
+                        statusMoving = routeStatusMovingArgb,
+                        onSurface = routeOnSurfaceArgb,
+                        surface = pillSurfaceArgb,
+                        outline = routeOutlineArgb,
+                        primary = draftPreviewColor.toArgb()
+                    )
+                )
+            }
+        }
+        val routePolylines = route?.polylines
+        val routeRuns = remember(routePolylines) { routePolylines?.toRenderablePolylineRuns().orEmpty() }
 
         // contentPadding solo trae lo que MapScreen puede medir (barra+chips arriba, columna de
         // FABs a la derecha, ver MapScreen.kt) -- abajo hace falta sumar lo que le corresponde
@@ -239,6 +272,25 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
                     color = Color(tail.colorArgb),
                     width = TAIL_STROKE_WIDTH_PX,
                     zIndex = 0f
+                )
+            }
+
+            // Recorrido de hoy: por debajo de los marcadores de unidad (zIndex 0, como la cola) y
+            // sin ninguna interacción -- el toque sobre una parada se consume para que el SDK no
+            // abra su InfoWindow.
+            routeRuns.forEach { (colorHex, points) ->
+                Polyline(
+                    points = points,
+                    color = (colorHex ?: DEFAULT_POLYLINE_COLOR).toComposeColor(),
+                    width = POLYLINE_WIDTH_PX,
+                    clickable = false
+                )
+            }
+            route?.markers?.forEach { marker ->
+                MarkerComposable(
+                    state = rememberMarkerState(position = marker.position.toLatLng()),
+                    icon = routeMarkerIcons.getValue(marker.role to false),
+                    onClick = { true }
                 )
             }
 

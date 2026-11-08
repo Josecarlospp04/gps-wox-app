@@ -16,11 +16,18 @@ import pe.soltelematic.mobile.domain.model.ServiceCreateForm
 import pe.soltelematic.mobile.domain.model.ServiceCreateRequest
 import pe.soltelematic.mobile.domain.model.UnitStat
 import pe.soltelematic.mobile.domain.repository.AssetDetailRepository
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 private val HISTORY_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+
+/**
+ * Rango de "hoy": de medianoche a [now], en la zona del teléfono (igual que antes en
+ * getTodayStats). Un solo [now] para ambos extremos, así el rango no se descuadra si el reloj cruza
+ * la medianoche entre dos lecturas.
+ */
+internal fun todayRange(now: LocalDateTime = LocalDateTime.now()): Pair<LocalDateTime, LocalDateTime> =
+    now.toLocalDate().atStartOfDay() to now
 
 // La app solo envía comandos GPRS -- SMS no está implementado (ver AssetDetailRepository.getCommands).
 private const val COMMANDS_CONNECTION_GPRS = "gprs"
@@ -38,8 +45,7 @@ class AssetDetailRepositoryImpl(
         }
 
     override suspend fun getTodayStats(id: Int): ApiResult<List<UnitStat>> {
-        val to = LocalDateTime.now()
-        val from = LocalDate.now().atStartOfDay()
+        val (from, to) = todayRange()
         return when (
             val result = apiCallExecutor.execute {
                 api.getHistory(
@@ -67,6 +73,11 @@ class AssetDetailRepositoryImpl(
             is ApiResult.Success -> ApiResult.Success(result.data.data.toDomain())
             is ApiResult.Error -> result
         }
+
+    override suspend fun getTodayRoute(id: Int): ApiResult<HistoryRoute> {
+        val (from, to) = todayRange()
+        return getRoute(id, from, to)
+    }
 
     override suspend fun getParameters(id: Int, from: LocalDateTime, to: LocalDateTime): ApiResult<List<ParameterSeries>> =
         when (

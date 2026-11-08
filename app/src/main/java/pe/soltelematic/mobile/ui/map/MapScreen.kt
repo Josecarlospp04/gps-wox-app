@@ -68,6 +68,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.first
@@ -88,6 +89,7 @@ import pe.soltelematic.mobile.ui.map.engine.MapCameraController
 import pe.soltelematic.mobile.ui.map.engine.MapEngine
 import pe.soltelematic.mobile.ui.map.engine.MapMarkerData
 import pe.soltelematic.mobile.ui.map.engine.MapTailData
+import pe.soltelematic.mobile.ui.map.engine.RouteOverlay
 import pe.soltelematic.mobile.ui.theme.LocalSoltelematicColors
 import pe.soltelematic.mobile.ui.theme.SoltelematicColors
 import pe.soltelematic.mobile.ui.theme.SoltelematicElevation
@@ -167,6 +169,20 @@ fun MapScreen(
         viewModel.onCancelGeofenceCreation()
     }
 
+    // Modo "Recorrido de hoy": Atrás sale del modo (sin panel todavía, ver TodayTrackState). No
+    // coexiste con el modo dibujo (entrar a dibujar sale del modo, ver MapViewModel).
+    val todayTrack = uiState.todayTrack
+    val trackedAssetId = todayTrack?.assetId
+    val isTracking = todayTrack != null
+    BackHandler(enabled = isTracking && uiState.geofenceCreation == null) {
+        viewModel.onExitTodayTrack()
+    }
+
+    // Sugerencias del buscador: se ocultan al tocar el mapa y reaparecen al volver a escribir.
+    var suggestionsVisible by remember { mutableStateOf(true) }
+    var searchBarHeightPx by remember { mutableIntStateOf(0) }
+    val focusManager = LocalFocusManager.current
+
     // Alto real de la barra de búsqueda + chips (o del toolbar de dibujo, ver más abajo) y ancho
     // real de la columna de FABs, medidos con onSizeChanged (no una constante a ojo): ambos ya
     // incluyen su propio windowInsetsPadding + padding(16.dp) de abajo, así que las safe insets
@@ -209,6 +225,44 @@ fun MapScreen(
         cameraController.frame(if (state.showTail) asset.framePoints() else listOfNotNull(asset.position))
     }
 
+    // Modo "Recorrido de hoy": encuadra el recorrido completo (o solo la unidad mientras carga / sin
+    // recorrido) una vez por pedido -- llave = unidad + frameRequestId, nunca la posición. Espera a
+    // que el padding ya aplicado al mapa sea el de la vista sin hoja y, dos cuadros, a que el
+    // overlay superior (chip en vez de chips de filtro) se haya medido; si no, el encuadre usaba el
+    // padding viejo.
+    val trackFrameId = todayTrack?.frameRequestId ?: 0
+    LaunchedEffect(trackedAssetId, trackFrameId) {
+        if (trackedAssetId == null) return@LaunchedEffect
+        withTimeoutOrNull(2000) {
+            snapshotFlow { appliedOverlapPx }.first { it == 0 }
+        }
+        withFrameNanos { }
+        withFrameNanos { }
+        val state = viewModel.uiState.value
+        val track = state.todayTrack ?: return@LaunchedEffect
+        if (track.assetId != trackedAssetId || track.frameRequestId != trackFrameId) return@LaunchedEffect
+        cameraController.frame(track.framePoints(state.trackedAsset?.position))
+    }
+
+    // Tocar la unidad seguida: centra la cámara en ella conservando el zoom actual.
+    val trackCenterId = todayTrack?.centerRequestId ?: 0
+    LaunchedEffect(trackedAssetId, trackCenterId) {
+        if (trackedAssetId == null || trackCenterId == 0) return@LaunchedEffect
+        viewModel.uiState.value.trackedAsset?.position?.let(cameraController::followTo)
+    }
+
+    // Al salir del modo: encuadre de toda la flota, ya con el padding de la vista normal. El valor
+    // inicial se captura al componer: volver a esta pantalla (cambio de pestaña) no repite el
+    // encuadre de una salida anterior.
+    val fleetFitId = uiState.fleetFitRequestId
+    val initialFleetFitId = remember { fleetFitId }
+    LaunchedEffect(fleetFitId) {
+        if (fleetFitId == initialFleetFitId) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        cameraController.fitAll(viewModel.uiState.value.assets.mapNotNull { it.position })
+    }
+
     // Seguimiento: en cada sondeo que mueve a la unidad enfocada, la cámara la sigue manteniendo el
     // zoom. No se anima si la posición no cambió ni al cambiar de unidad (eso lo encuadra el efecto
     // de arriba); tampoco al volver a seguir, cuando solo cambia isFollowing.
@@ -232,8 +286,11 @@ fun MapScreen(
     // (statusColorArgb, ver MapMarkerData): un cambio de tema claro/oscuro debe reconstruir los
     // marcadores para que MarkerIconCache regenere sus bitmaps con el color correcto.
     val solColors = LocalSoltelematicColors.current
-    val markers = remember(uiState.visibleAssets, solColors) {
-        uiState.visibleAssets.mapNotNull { asset ->
+    // En el modo "Recorrido de hoy" solo se dibuja la unidad seguida, sin importar chip ni texto del
+    // buscador (ese texto sirve para elegir otra unidad, no para ocultar la seguida).
+    val markerAssets = if (isTracking) uiState.assets else uiState.visibleAssets
+    val allMarkers = remember(markerAssets, solColors) {
+        markerAssets.mapNotNull { asset ->
             val position = asset.position ?: return@mapNotNull null
             MapMarkerData(
                 id = asset.id,
@@ -244,6 +301,13 @@ fun MapScreen(
                 dimmed = asset.status.type == AssetStatusType.OFFLINE
             )
         }
+    }
+    val markers = remember(allMarkers, trackedAssetId) { allMarkers.onlyTracked(trackedAssetId) }
+
+    // Misma instancia mientras no cambie el recorrido: el engine memoiza la simplificación por
+    // identidad de la lista de polilíneas.
+    val routeOverlay = remember(todayTrack?.mapData) {
+        todayTrack?.mapData?.let { RouteOverlay(polylines = it.polylines, markers = it.markers) }
     }
 
     val visibleFilters = remember(uiState.hasBlockedAssets) {
@@ -292,12 +356,19 @@ fun MapScreen(
             selectedMarkerId = uiState.highlightedAssetId,
             myLocationEnabled = hasLocationPermission,
             geofences = uiState.visibleGeofences,
-            onMarkerClick = if (isDrawingGeofence) { {} } else viewModel::onAssetSelected,
+            onMarkerClick = when {
+                isDrawingGeofence -> { _ -> }
+                // Único marcador visible en el modo: tocarlo centra la cámara, no abre la hoja.
+                isTracking -> { _ -> viewModel.onTrackedAssetTapped() }
+                else -> viewModel::onAssetSelected
+            },
             onMapClick = { point ->
                 if (isDrawingGeofence) {
                     viewModel.onGeofenceMapTapped(point)
                 } else {
-                    viewModel.onBottomSheetDismissed()
+                    suggestionsVisible = false
+                    // En el modo no hay hoja ni enfoque que cerrar: tocar el mapa vacío no sale.
+                    if (!isTracking) viewModel.onBottomSheetDismissed()
                 }
             },
             contentPadding = mapContentPadding,
@@ -310,6 +381,7 @@ fun MapScreen(
                 }
             },
             tail = tailData,
+            route = routeOverlay,
             onCameraGesture = viewModel::onCameraGesture
         )
 
@@ -343,17 +415,58 @@ fun MapScreen(
                 // la campana se queda, ahora dentro del mismo Surface que el buscador.
                 MapSearchBar(
                     query = uiState.searchQuery,
-                    onQueryChange = viewModel::onSearchQueryChange,
+                    onQueryChange = { query ->
+                        suggestionsVisible = true
+                        viewModel.onSearchQueryChange(query)
+                    },
+                    onSearch = {
+                        focusManager.clearFocus()
+                        viewModel.onSearchSubmit()
+                    },
                     onOpenEvents = onOpenEvents,
                     showUnreadDot = uiState.unseenEventsCount > 0,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { size -> searchBarHeightPx = size.height }
                 )
                 Spacer(modifier = Modifier.height(SoltelematicSpacing.sm))
-                AssetFilterChipsRow(
-                    filters = visibleFilters,
-                    activeFilter = uiState.activeFilter,
-                    counts = filterCounts,
-                    onFilterSelected = viewModel::onFilterSelected
+                if (todayTrack != null) {
+                    TodayTrackChip(
+                        unitName = uiState.trackedAsset?.name.orEmpty(),
+                        status = todayTrack.status,
+                        onExit = viewModel::onExitTodayTrack,
+                        onRetry = viewModel::onTodayTrackRetry,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    AssetFilterChipsRow(
+                        filters = visibleFilters,
+                        activeFilter = uiState.activeFilter,
+                        counts = filterCounts,
+                        onFilterSelected = viewModel::onFilterSelected
+                    )
+                }
+            }
+        }
+
+        // Sugerencias del buscador: overlay aparte (no dentro de la columna superior) para que su
+        // altura no entre en topOverlayHeightPx -- si no, cada tecla movería el padding del mapa.
+        val suggestions = uiState.searchSuggestions
+        if (!isDrawingGeofence && suggestionsVisible && suggestions.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                    .padding(SoltelematicSpacing.lg)
+            ) {
+                Spacer(modifier = Modifier.height(with(density) { searchBarHeightPx.toDp() } + SoltelematicSpacing.xs))
+                SearchSuggestionsList(
+                    assets = suggestions,
+                    onSelect = { id ->
+                        focusManager.clearFocus()
+                        viewModel.onTrackTodaySelected(id)
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -369,7 +482,8 @@ fun MapScreen(
                 MapFab(
                     onClick = {
                         viewModel.onStopFollowing()
-                        cameraController.fitAll(markers.map { it.position })
+                        // En el modo, "ajustar" vuelve a encuadrar el recorrido de hoy.
+                        if (isTracking) viewModel.onTrackReframe() else cameraController.fitAll(markers.map { it.position })
                     },
                     icon = Icons.Filled.ZoomOutMap,
                     contentDescription = stringResource(R.string.map_fit_all)
@@ -465,6 +579,7 @@ private class LastHighlighted {
 private fun MapSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
     onOpenEvents: () -> Unit,
     showUnreadDot: Boolean,
     modifier: Modifier = Modifier
@@ -475,6 +590,7 @@ private fun MapSearchBar(
         query = query,
         onQueryChange = onQueryChange,
         modifier = modifier,
+        onSearch = onSearch,
         trailingContent = {
             Box {
                 IconButton(onClick = onOpenEvents) {

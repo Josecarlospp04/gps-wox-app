@@ -7,6 +7,8 @@ import pe.soltelematic.mobile.domain.model.Geofence
 import pe.soltelematic.mobile.domain.model.MapType
 import pe.soltelematic.mobile.domain.model.UnitStat
 
+const val MAX_SEARCH_SUGGESTIONS = 6
+
 data class MapUiState(
     val assets: List<Asset> = emptyList(),
     val searchQuery: String = "",
@@ -45,8 +47,21 @@ data class MapUiState(
     // null = mapa normal, fuera de modo dibujo. Ver GeofenceCreationState.
     val geofenceCreation: GeofenceCreationState? = null,
     // null = hoja de borrado cerrada. Ver GeofenceDeletionState.
-    val geofenceDeletion: GeofenceDeletionState? = null
+    val geofenceDeletion: GeofenceDeletionState? = null,
+    // null = vista normal con toda la flota. Ver TodayTrackState.
+    val todayTrack: TodayTrackState? = null,
+    // Sube al salir del modo "Recorrido de hoy": MapScreen encuadra toda la flota una vez por valor,
+    // ya con el padding de la vista normal aplicado (ver MapScreen).
+    val fleetFitRequestId: Int = 0
 ) {
+    // Sugerencias bajo el buscador mientras se escribe (máx. MAX_SEARCH_SUGGESTIONS): las mismas
+    // unidades que el filtro deja visibles en el mapa, así que respetan el chip activo.
+    val searchSuggestions: List<Asset>
+        get() = if (searchQuery.isBlank()) emptyList() else visibleAssets.take(MAX_SEARCH_SUGGESTIONS)
+
+    val trackedAsset: Asset?
+        get() = todayTrack?.let { track -> assets.firstOrNull { it.id == track.assetId } }
+
     val visibleAssets: List<Asset>
         get() = assets
             .filter(activeFilter::matches)

@@ -29,6 +29,12 @@ interface AssetDetailRepository {
     suspend fun getRoute(id: Int, from: LocalDateTime, to: LocalDateTime): ApiResult<HistoryRoute>
 
     /**
+     * Ruta de HOY (00:00 de la zona del teléfono hasta ahora) para el modo "Recorrido de hoy" del
+     * mapa principal. Mismo endpoint y mismo rango que getTodayStats, pero con la ruta completa.
+     */
+    suspend fun getTodayRoute(id: Int): ApiResult<HistoryRoute>
+
+    /**
      * Series de parámetros (voltaje, batería, señal, satélites, velocidad, combustible) para las
      * gráficas de la pantalla nueva accesible desde Historial (parche 8, GET clientlite/parameters).
      * Solo trae las series que la unidad SÍ reporta -- ver ParametersResponseDto. El servidor ya

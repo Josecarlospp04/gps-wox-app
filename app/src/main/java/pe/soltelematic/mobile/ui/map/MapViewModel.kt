@@ -2,6 +2,7 @@ package pe.soltelematic.mobile.ui.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import pe.soltelematic.mobile.core.navigation.MapFocusRequestBus
 import pe.soltelematic.mobile.core.network.RealtimePoller
 import pe.soltelematic.mobile.core.network.SocketRealtimeClient
@@ -28,6 +30,7 @@ import pe.soltelematic.mobile.domain.model.MapType
 import pe.soltelematic.mobile.domain.repository.AssetDetailRepository
 import pe.soltelematic.mobile.domain.repository.AssetRepository
 import pe.soltelematic.mobile.domain.repository.GeofencesRepository
+import pe.soltelematic.mobile.ui.history.toRouteMapData
 
 class MapViewModel(
     private val assetRepository: AssetRepository,
@@ -48,6 +51,7 @@ class MapViewModel(
 
     private var statsJob: Job? = null
     private var addressJob: Job? = null
+    private var trackJob: Job? = null
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
@@ -247,6 +251,8 @@ class MapViewModel(
      * automático.
      */
     private fun focusOnAsset(id: Int, openSheet: Boolean) {
+        // "Ver en mapa" / Unidades mandan sobre el modo "Recorrido de hoy": se sale de él primero.
+        if (_uiState.value.todayTrack != null) onExitTodayTrack()
         pendingFocusOpenSheet = openSheet
         revealAssetIfHidden(id)
         val position = _uiState.value.assets.firstOrNull { it.id == id }?.position
@@ -364,6 +370,98 @@ class MapViewModel(
         }
     }
 
+    // --- Recorrido de hoy ---
+
+    /**
+     * Entrar al modo (o cambiar de unidad estando en él) desde una sugerencia del buscador. Cierra
+     * hoja/foco/seguimiento -- en el modo no hay ninguno -- y limpia la búsqueda: ya cumplió su
+     * trabajo y, al salir, no debe dejar el mapa filtrado por el nombre de esta unidad.
+     */
+    fun onTrackTodaySelected(id: Int) {
+        if (_uiState.value.assets.none { it.id == id }) return
+        statsJob?.cancel()
+        addressJob?.cancel()
+        _uiState.update {
+            it.copy(
+                selectedAssetId = null,
+                focusedAssetId = null,
+                isFollowing = false,
+                isSelectedAssetStatsLoading = false,
+                selectedAssetStats = emptyList(),
+                isSelectedAssetAddressLoading = false,
+                selectedAssetAddress = null,
+                searchQuery = "",
+                todayTrack = TodayTrackState(assetId = id)
+            )
+        }
+        loadTodayTrack(id)
+    }
+
+    /** Enter en el buscador: solo selecciona si hay una única sugerencia. */
+    fun onSearchSubmit() {
+        val only = _uiState.value.searchSuggestions.singleOrNull() ?: return
+        onTrackTodaySelected(only.id)
+    }
+
+    fun onTodayTrackRetry() {
+        val track = _uiState.value.todayTrack ?: return
+        _uiState.update { it.copy(todayTrack = track.copy(status = TodayTrackStatus.LOADING)) }
+        loadTodayTrack(track.assetId)
+    }
+
+    /** Tocar la unidad seguida (único marcador visible en el modo): centra la cámara en ella. */
+    fun onTrackedAssetTapped() {
+        _uiState.update { state ->
+            val track = state.todayTrack ?: return@update state
+            state.copy(todayTrack = track.copy(centerRequestId = track.centerRequestId + 1))
+        }
+    }
+
+    /** "Ajustar zoom" dentro del modo: vuelve a encuadrar el recorrido completo. */
+    fun onTrackReframe() {
+        _uiState.update { state ->
+            val track = state.todayTrack ?: return@update state
+            state.copy(todayTrack = track.copy(frameRequestId = track.frameRequestId + 1))
+        }
+    }
+
+    fun onExitTodayTrack() {
+        if (_uiState.value.todayTrack == null) return
+        trackJob?.cancel()
+        _uiState.update { it.copy(todayTrack = null, fleetFitRequestId = it.fleetFitRequestId + 1) }
+    }
+
+    private fun loadTodayTrack(id: Int) {
+        trackJob?.cancel()
+        trackJob = viewModelScope.launch {
+            when (val result = assetDetailRepository.getTodayRoute(id)) {
+                is ApiResult.Success -> {
+                    val route = result.data
+                    // Mapeo fuera del hilo principal: un día largo trae miles de posiciones.
+                    val mapData = withContext(Dispatchers.Default) { route.toRouteMapData() }
+                    _uiState.update { state ->
+                        val track = state.todayTrack ?: return@update state
+                        // Llegó tarde: el usuario ya cambió de unidad o salió del modo.
+                        if (track.assetId != id) return@update state
+                        state.copy(
+                            todayTrack = track.copy(
+                                status = if (route.legs.isEmpty()) TodayTrackStatus.EMPTY else TodayTrackStatus.READY,
+                                route = route,
+                                mapData = mapData,
+                                frameRequestId = track.frameRequestId + 1
+                            )
+                        )
+                    }
+                }
+                is ApiResult.Error -> _uiState.update { state ->
+                    val track = state.todayTrack ?: return@update state
+                    if (track.assetId != id) return@update state
+                    state.copy(todayTrack = track.copy(status = TodayTrackStatus.ERROR, frameRequestId = track.frameRequestId + 1))
+                }
+            }
+        }
+    }
+
     private fun loadSelectedAssetStats(id: Int) {
         statsJob?.cancel()
         statsJob = viewModelScope.launch {
@@ -431,6 +529,7 @@ class MapViewModel(
     // --- Creación de geocercas ---
 
     fun onStartGeofenceCreation() {
+        if (_uiState.value.todayTrack != null) onExitTodayTrack()
         onBottomSheetDismissed()
         _uiState.update { it.copy(geofenceCreation = GeofenceCreationState()) }
     }

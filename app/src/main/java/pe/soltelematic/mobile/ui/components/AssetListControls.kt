@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.FilterChip
@@ -23,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import pe.soltelematic.mobile.R
 import pe.soltelematic.mobile.domain.model.AssetFilter
@@ -44,6 +47,9 @@ fun AssetSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    // Acción del botón "buscar" del teclado (Enter). null = comportamiento de siempre, sin
+    // ImeAction.Search -- solo el Mapa lo usa (seleccionar la única unidad sugerida).
+    onSearch: (() -> Unit)? = null,
     trailingContent: @Composable RowScope.() -> Unit = {}
 ) {
     Surface(
@@ -64,6 +70,8 @@ fun AssetSearchBar(
                 )
             },
             singleLine = true,
+            keyboardOptions = if (onSearch != null) KeyboardOptions(imeAction = ImeAction.Search) else KeyboardOptions.Default,
+            keyboardActions = if (onSearch != null) KeyboardActions(onSearch = { onSearch() }) else KeyboardActions.Default,
             // Ícono de marca en vez de una lupa genérica (ver mockup del mapa): mismo criterio acá.
             leadingIcon = { BrandLogo(brand = null) },
             trailingIcon = {

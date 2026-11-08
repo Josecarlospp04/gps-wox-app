@@ -38,6 +38,16 @@ data class MapTailData(
 )
 
 /**
+ * Recorrido de hoy de una unidad (modo "Recorrido de hoy" del mapa principal), ya listo para
+ * dibujar: mismos tipos que usa el mapa del Historial (RoutePolyline/RouteMarkerData, ver
+ * RouteMapEngine.kt), así que se reutiliza el dibujado de ruta en vez de duplicarlo.
+ */
+data class RouteOverlay(
+    val polylines: List<RoutePolyline>,
+    val markers: List<RouteMarkerData>
+)
+
+/**
  * Puente imperativo hacia la cámara del motor concreto. Los botones flotantes del mapa
  * (centrar en mi ubicación, ajustar zoom a todas) no son composables, así que necesitan un
  * objeto al que llamar desde un onClick normal en vez de una función @Composable.
@@ -124,6 +134,10 @@ interface MapEngine {
         // Cola de la unidad seleccionada; null = nada que dibujar. Sin valor por defecto, mismo
         // motivo que draft. Siempre por debajo de los marcadores.
         tail: MapTailData?,
+        // Recorrido de hoy de la unidad en modo "Recorrido de hoy"; null = fuera de ese modo. Sin
+        // valor por defecto, mismo motivo que draft. Los marcadores de parada nunca abren popup ni
+        // reportan toques.
+        route: RouteOverlay?,
         // El usuario empezó a mover la cámara con un gesto (arrastrar, pellizcar, rotar, inclinar).
         // Las animaciones propias de la app (frame/centerOn/followTo/fitAll) NO lo disparan. Una
         // vez por gesto, no por frame. Sin valor por defecto, mismo motivo que draft.

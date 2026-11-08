@@ -32,6 +32,13 @@
 
     <string name="map_search_placeholder">Buscar unidad, placa o conductor</string>
     <string name="map_search_clear">Limpiar búsqueda</string>
+    <string name="today_track_title">Recorrido de hoy</string>
+    <string name="today_track_exit">Salir del recorrido de hoy</string>
+    <string name="today_track_loading">Cargando recorrido…</string>
+    <string name="today_track_empty">Sin recorrido hoy</string>
+    <string name="today_track_error">No se pudo cargar el recorrido</string>
+    <string name="today_track_retry">Reintentar</string>
+    <string name="today_track_suggestion_action">Ver recorrido de hoy</string>
     <string name="map_center_my_location">Centrar en mi ubicación</string>
     <string name="map_fit_all">Ajustar zoom a todas</string>
     <string name="map_toggle_geofences">Mostrar u ocultar geocercas</string>
