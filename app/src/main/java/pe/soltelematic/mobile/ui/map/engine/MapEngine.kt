@@ -44,7 +44,9 @@ data class MapTailData(
  */
 data class RouteOverlay(
     val polylines: List<RoutePolyline>,
-    val markers: List<RouteMarkerData>
+    val markers: List<RouteMarkerData>,
+    // Tramo resaltado (mismo legIndex que RoutePolyline/RouteMarkerData); null = ninguno.
+    val selectedLegIndex: Int? = null
 )
 
 /**

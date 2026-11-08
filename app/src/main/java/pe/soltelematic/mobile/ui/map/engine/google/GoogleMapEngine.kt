@@ -181,7 +181,15 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
             }
         }
         val routePolylines = route?.polylines
-        val routeRuns = remember(routePolylines) { routePolylines?.toRenderablePolylineRuns().orEmpty() }
+        val routeSelectedLeg = route?.selectedLegIndex
+        // Igual que GoogleRouteMapEngine: el tramo resaltado va aparte y a fidelidad completa, el
+        // resto pasa por el presupuesto de puntos.
+        val routeSelectedPolyline = remember(routePolylines, routeSelectedLeg) {
+            routePolylines?.firstOrNull { it.legIndex == routeSelectedLeg }
+        }
+        val routeRuns = remember(routePolylines, routeSelectedLeg) {
+            routePolylines?.filter { it.legIndex != routeSelectedLeg }?.toRenderablePolylineRuns().orEmpty()
+        }
 
         // contentPadding solo trae lo que MapScreen puede medir (barra+chips arriba, columna de
         // FABs a la derecha, ver MapScreen.kt) -- abajo hace falta sumar lo que le corresponde
@@ -278,6 +286,15 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
             // Recorrido de hoy: por debajo de los marcadores de unidad (zIndex 0, como la cola) y
             // sin ninguna interacción -- el toque sobre una parada se consume para que el SDK no
             // abra su InfoWindow.
+            routeSelectedPolyline?.let { selected ->
+                Polyline(
+                    points = selected.points.map { it.point.toLatLng() },
+                    color = MaterialTheme.colorScheme.primary,
+                    width = SELECTED_POLYLINE_WIDTH_PX,
+                    zIndex = 0.5f,
+                    clickable = false
+                )
+            }
             routeRuns.forEach { (colorHex, points) ->
                 Polyline(
                     points = points,
@@ -287,9 +304,10 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
                 )
             }
             route?.markers?.forEach { marker ->
+                val isSelected = marker.legIndex == routeSelectedLeg
                 MarkerComposable(
                     state = rememberMarkerState(position = marker.position.toLatLng()),
-                    icon = routeMarkerIcons.getValue(marker.role to false),
+                    icon = routeMarkerIcons.getValue(marker.role to isSelected),
                     onClick = { true }
                 )
             }

@@ -167,36 +167,47 @@ fun HistoryTimeline(
  */
 @Composable
 private fun RouteSummarySection(legs: List<HistoryLeg>, periodStats: List<UnitStat>, onOpenParameterCharts: () -> Unit) {
-    val distance = periodStats.valueFor("distance")
-    val drivingTime = sumDurationsCompact(legs.filterIsInstance<HistoryDriveLeg>().map { it.stats.valueFor("duration") })
-    val stopCount = legs.count { it is HistoryStopLeg }
     val extraStats = periodStats.filterNot { it.key == "distance" || it.key == "duration" }
 
     Column(verticalArrangement = Arrangement.spacedBy(SoltelematicSpacing.sm)) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(SoltelematicSpacing.sm),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            RouteSummaryCard(
-                value = distance ?: "-",
-                label = stringResource(R.string.history_summary_distance),
-                modifier = Modifier.weight(1f)
-            )
-            RouteSummaryCard(
-                value = drivingTime,
-                label = stringResource(R.string.history_summary_driving_time),
-                modifier = Modifier.weight(1f)
-            )
-            RouteSummaryCard(
-                value = stopCount.toString(),
-                label = stringResource(R.string.history_summary_stops),
-                modifier = Modifier.weight(1f)
-            )
-        }
+        RouteSummaryCards(legs = legs, periodStats = periodStats)
         // Antes solo aparecía si había stats extra del servidor -- ahora siempre, porque también
         // aloja el botón "Gráficos" (ver comentario de ExtraStatsSection), sin depender de que la
         // unidad tenga algún sensor extra configurado.
         ExtraStatsSection(stats = extraStats, onOpenParameterCharts = onOpenParameterCharts)
+    }
+}
+
+/**
+ * Las 3 tarjetas del resumen (distancia / tiempo de conducción / paradas). Extraída tal cual de
+ * RouteSummarySection para que el panel de "Recorrido de hoy" del mapa principal muestre el mismo
+ * resumen con el mismo estilo; Historial se ve idéntico.
+ */
+@Composable
+internal fun RouteSummaryCards(legs: List<HistoryLeg>, periodStats: List<UnitStat>, modifier: Modifier = Modifier) {
+    val distance = periodStats.valueFor("distance")
+    val drivingTime = sumDurationsCompact(legs.filterIsInstance<HistoryDriveLeg>().map { it.stats.valueFor("duration") })
+    val stopCount = legs.count { it is HistoryStopLeg }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(SoltelematicSpacing.sm),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        RouteSummaryCard(
+            value = distance ?: "-",
+            label = stringResource(R.string.history_summary_distance),
+            modifier = Modifier.weight(1f)
+        )
+        RouteSummaryCard(
+            value = drivingTime,
+            label = stringResource(R.string.history_summary_driving_time),
+            modifier = Modifier.weight(1f)
+        )
+        RouteSummaryCard(
+            value = stopCount.toString(),
+            label = stringResource(R.string.history_summary_stops),
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -440,7 +451,7 @@ private fun HistoryPlaybackPoint?.speedDisplayText(): String {
 }
 
 @Composable
-private fun HistoryLegRow(
+internal fun HistoryLegRow(
     leg: HistoryLeg,
     selected: Boolean,
     // true mientras el marcador de reproducción recorre este tramo (ver HistoryTimeline.playingLegIndex)

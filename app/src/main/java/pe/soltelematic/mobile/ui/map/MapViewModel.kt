@@ -26,10 +26,12 @@ import pe.soltelematic.mobile.domain.model.AssetStatusType
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.GeofenceCreateRequest
 import pe.soltelematic.mobile.domain.model.GeofenceShape
+import pe.soltelematic.mobile.domain.model.HistoryStopLeg
 import pe.soltelematic.mobile.domain.model.MapType
 import pe.soltelematic.mobile.domain.repository.AssetDetailRepository
 import pe.soltelematic.mobile.domain.repository.AssetRepository
 import pe.soltelematic.mobile.domain.repository.GeofencesRepository
+import pe.soltelematic.mobile.ui.history.AddressResolution
 import pe.soltelematic.mobile.ui.history.toRouteMapData
 
 class MapViewModel(
@@ -421,7 +423,58 @@ class MapViewModel(
     fun onTrackReframe() {
         _uiState.update { state ->
             val track = state.todayTrack ?: return@update state
-            state.copy(todayTrack = track.copy(frameRequestId = track.frameRequestId + 1))
+            // El resaltado de un tramo no sobrevive a "ver todo el recorrido".
+            state.copy(todayTrack = track.copy(frameRequestId = track.frameRequestId + 1, selectedLegIndex = null))
+        }
+    }
+
+    fun onTodayPanelExpandedChange(expanded: Boolean) = updateTrack { it.withPanelExpanded(expanded) }
+
+    /** Fila de tramo tocada en el panel: resalta, pliega el panel y pide encuadrar (ver withLegSelected). */
+    fun onTodayLegSelected(legIndex: Int) = updateTrack { it.withLegSelected(legIndex) }
+
+    /** Atrás en el modo: pliega el panel si está desplegado; si no, sale. */
+    fun onTodayTrackBack() {
+        val track = _uiState.value.todayTrack ?: return
+        val next = track.afterBack()
+        if (next == null) onExitTodayTrack() else updateTrack { next }
+    }
+
+    /** Misma mecánica que HistoryViewModel.onStopRowVisible: solo se pide al entrar la fila en pantalla. */
+    fun onTodayStopRowVisible(legIndex: Int, point: GeoPoint) {
+        val track = _uiState.value.todayTrack ?: return
+        if (track.addresses.containsKey(legIndex)) return
+        if (addressCache.containsKey(point)) {
+            setTodayAddress(track.assetId, legIndex, point, AddressResolution.Resolved(addressCache.getValue(point)))
+            return
+        }
+        setTodayAddress(track.assetId, legIndex, point, AddressResolution.Loading)
+        viewModelScope.launch {
+            val resolved = when (val result = assetDetailRepository.getAddress(point.lat, point.lng)) {
+                is ApiResult.Success -> result.data
+                is ApiResult.Error -> null
+            }
+            addressCache[point] = resolved
+            setTodayAddress(track.assetId, legIndex, point, AddressResolution.Resolved(resolved))
+        }
+    }
+
+    private fun updateTrack(transform: (TodayTrackState) -> TodayTrackState) {
+        _uiState.update { state ->
+            val track = state.todayTrack ?: return@update state
+            state.copy(todayTrack = transform(track))
+        }
+    }
+
+    // Descarta la respuesta si llegó tarde: otra unidad, otro recorrido o la fila ya no es esa parada.
+    private fun setTodayAddress(assetId: Int, legIndex: Int, point: GeoPoint, resolution: AddressResolution) {
+        updateTrack { track ->
+            val leg = track.route?.legs?.getOrNull(legIndex)
+            if (track.assetId != assetId || (leg as? HistoryStopLeg)?.start?.point != point) {
+                track
+            } else {
+                track.copy(addresses = track.addresses + (legIndex to resolution))
+            }
         }
     }
 
@@ -448,6 +501,8 @@ class MapViewModel(
                                 status = if (route.legs.isEmpty()) TodayTrackStatus.EMPTY else TodayTrackStatus.READY,
                                 route = route,
                                 mapData = mapData,
+                                selectedLegIndex = null,
+                                addresses = emptyMap(),
                                 frameRequestId = track.frameRequestId + 1
                             )
                         )

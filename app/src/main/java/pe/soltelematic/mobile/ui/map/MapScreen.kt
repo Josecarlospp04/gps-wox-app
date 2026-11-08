@@ -70,7 +70,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -96,6 +99,7 @@ import pe.soltelematic.mobile.ui.theme.SoltelematicElevation
 import pe.soltelematic.mobile.ui.theme.SoltelematicShapes
 import pe.soltelematic.mobile.ui.theme.SoltelematicSpacing
 
+@OptIn(FlowPreview::class)
 @Composable
 fun MapScreen(
     onOpenAssetDetail: (Int) -> Unit,
@@ -169,13 +173,14 @@ fun MapScreen(
         viewModel.onCancelGeofenceCreation()
     }
 
-    // Modo "Recorrido de hoy": Atrás sale del modo (sin panel todavía, ver TodayTrackState). No
-    // coexiste con el modo dibujo (entrar a dibujar sale del modo, ver MapViewModel).
+    // Modo "Recorrido de hoy": Atrás pliega el panel si está desplegado y, si no, sale del modo (ver
+    // TodayTrackState.afterBack). No coexiste con el modo dibujo (entrar a dibujar sale del modo,
+    // ver MapViewModel).
     val todayTrack = uiState.todayTrack
     val trackedAssetId = todayTrack?.assetId
     val isTracking = todayTrack != null
     BackHandler(enabled = isTracking && uiState.geofenceCreation == null) {
-        viewModel.onExitTodayTrack()
+        viewModel.onTodayTrackBack()
     }
 
     // Sugerencias del buscador: se ocultan al tocar el mapa y reaparecen al volver a escribir.
@@ -227,21 +232,33 @@ fun MapScreen(
 
     // Modo "Recorrido de hoy": encuadra el recorrido completo (o solo la unidad mientras carga / sin
     // recorrido) una vez por pedido -- llave = unidad + frameRequestId, nunca la posición. Espera a
-    // que el padding ya aplicado al mapa sea el de la vista sin hoja y, dos cuadros, a que el
-    // overlay superior (chip en vez de chips de filtro) se haya medido; si no, el encuadre usaba el
+    // que el panel inferior esté medido y asentado (su borde superior ya es padding del mapa) y,
+    // dos cuadros, a que el overlay superior y ese padding se apliquen; si no, el encuadre usaba el
     // padding viejo.
     val trackFrameId = todayTrack?.frameRequestId ?: 0
     LaunchedEffect(trackedAssetId, trackFrameId) {
         if (trackedAssetId == null) return@LaunchedEffect
-        withTimeoutOrNull(2000) {
-            snapshotFlow { appliedOverlapPx }.first { it == 0 }
-        }
+        awaitPanelSettled { sheetTopPx }
         withFrameNanos { }
         withFrameNanos { }
         val state = viewModel.uiState.value
         val track = state.todayTrack ?: return@LaunchedEffect
         if (track.assetId != trackedAssetId || track.frameRequestId != trackFrameId) return@LaunchedEffect
         cameraController.frame(track.framePoints(state.trackedAsset?.position))
+    }
+
+    // Tramo tocado en el panel: el panel ya se plegó (ver withLegSelected); se espera a que su
+    // borde nuevo se asiente y se encuadra el tramo (punto para una parada, trazado para un
+    // trayecto) dentro de la zona visible. Una vez por pedido.
+    val legFocusId = todayTrack?.legFocusRequestId ?: 0
+    LaunchedEffect(trackedAssetId, legFocusId) {
+        if (trackedAssetId == null || legFocusId == 0) return@LaunchedEffect
+        awaitPanelSettled { sheetTopPx }
+        withFrameNanos { }
+        withFrameNanos { }
+        val track = viewModel.uiState.value.todayTrack ?: return@LaunchedEffect
+        if (track.assetId != trackedAssetId || track.legFocusRequestId != legFocusId) return@LaunchedEffect
+        track.selectedLegFramePoints()?.let(cameraController::frame)
     }
 
     // Tocar la unidad seguida: centra la cámara en ella conservando el zoom actual.
@@ -258,6 +275,10 @@ fun MapScreen(
     val initialFleetFitId = remember { fleetFitId }
     LaunchedEffect(fleetFitId) {
         if (fleetFitId == initialFleetFitId) return@LaunchedEffect
+        // El panel ya salió de composición: esperar a que el mapa pierda su padding inferior.
+        withTimeoutOrNull(1000) {
+            snapshotFlow { appliedOverlapPx }.first { it == 0 }
+        }
         withFrameNanos { }
         withFrameNanos { }
         cameraController.fitAll(viewModel.uiState.value.assets.mapNotNull { it.position })
@@ -306,8 +327,11 @@ fun MapScreen(
 
     // Misma instancia mientras no cambie el recorrido: el engine memoiza la simplificación por
     // identidad de la lista de polilíneas.
-    val routeOverlay = remember(todayTrack?.mapData) {
-        todayTrack?.mapData?.let { RouteOverlay(polylines = it.polylines, markers = it.markers) }
+    val trackSelectedLeg = todayTrack?.selectedLegIndex
+    val routeOverlay = remember(todayTrack?.mapData, trackSelectedLeg) {
+        todayTrack?.mapData?.let {
+            RouteOverlay(polylines = it.polylines, markers = it.markers, selectedLegIndex = trackSelectedLeg)
+        }
     }
 
     val visibleFilters = remember(uiState.hasBlockedAssets) {
@@ -433,9 +457,7 @@ fun MapScreen(
                 if (todayTrack != null) {
                     TodayTrackChip(
                         unitName = uiState.trackedAsset?.name.orEmpty(),
-                        status = todayTrack.status,
                         onExit = viewModel::onExitTodayTrack,
-                        onRetry = viewModel::onTodayTrackRetry,
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
@@ -471,10 +493,29 @@ fun MapScreen(
             }
         }
 
-        if (!isDrawingGeofence) {
+        // Panel del modo: su borde superior (ya asentado) entra en sheetTopPx -> padding del mapa.
+        if (todayTrack != null && !isDrawingGeofence) {
+            TodayTrackPanel(
+                track = todayTrack,
+                onExpandedChange = viewModel::onTodayPanelExpandedChange,
+                onLegClick = viewModel::onTodayLegSelected,
+                onStopRowVisible = viewModel::onTodayStopRowVisible,
+                onRetry = viewModel::onTodayTrackRetry,
+                onOpenHistory = { onOpenHistory(todayTrack.assetId) },
+                onSheetTopChanged = { sheetTopPx = it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+
+        // En el modo, los FAB suben con el panel plegado y se ocultan con el panel desplegado (una
+        // lista alta no deja sitio para 4 botones entre ella y la barra superior).
+        val panelLift = if (isTracking) with(density) { sheetOverlapPx.toDp() } else 0.dp
+        val fabsVisible = !isDrawingGeofence && todayTrack?.panelExpanded != true
+        if (fabsVisible) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
+                    .padding(bottom = panelLift)
                     .onSizeChanged { size -> fabColumnWidthPx = size.width }
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(SoltelematicSpacing.lg)
@@ -518,7 +559,9 @@ fun MapScreen(
 
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = panelLift)
         )
     }
 
@@ -560,6 +603,18 @@ fun MapScreen(
             onDeleteCancelled = viewModel::onGeofenceDeleteCancelled,
             onDismiss = viewModel::onGeofenceDeletionDismissed
         )
+    }
+}
+
+/**
+ * Espera a que el borde superior del panel inferior esté medido y no cambie durante un rato (el
+ * panel publica ya asentado, pero un plegado/desplegado reciente tarda unos cuadros). Con tope de
+ * espera para no colgar el encuadre si el panel nunca reporta.
+ */
+@OptIn(FlowPreview::class)
+private suspend fun awaitPanelSettled(top: () -> Float?) {
+    withTimeoutOrNull(1500) {
+        snapshotFlow(top).debounce(300).first { it != null }
     }
 }
 

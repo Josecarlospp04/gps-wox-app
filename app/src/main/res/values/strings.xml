@@ -39,6 +39,9 @@
     <string name="today_track_error">No se pudo cargar el recorrido</string>
     <string name="today_track_retry">Reintentar</string>
     <string name="today_track_suggestion_action">Ver recorrido de hoy</string>
+    <string name="today_track_open_history">Ver historial completo</string>
+    <string name="today_track_panel_expand">Desplegar la lista de tramos</string>
+    <string name="today_track_panel_collapse">Plegar la lista de tramos</string>
     <string name="map_center_my_location">Centrar en mi ubicación</string>
     <string name="map_fit_all">Ajustar zoom a todas</string>
     <string name="map_toggle_geofences">Mostrar u ocultar geocercas</string>
