@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SOLTELEMATIC"
+rootProject.name = "GPS-WOX-App"
 include(":app")

@@ -1,4 +1,4 @@
-# Parches al servidor GPSWOX — SOLTELEMATIC Mobile
+# Parches al servidor GPSWOX — GPS WOX (gps-wox-app)
 
 Doce parches obligatorios. Sin ellos la app no funciona correctamente.
 

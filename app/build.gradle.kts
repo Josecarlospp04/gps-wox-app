@@ -40,7 +40,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "pe.soltelematic.mobile"
+        applicationId = "pe.gpswox.mobile"
         minSdk = 26
         targetSdk = 36
         versionCode = 10

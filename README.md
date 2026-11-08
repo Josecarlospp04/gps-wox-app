@@ -1,29 +1,29 @@
-# SOLTELEMATIC Mobile
+# GPS WOX
 
-App Android nativa de **SOLTELEMATIC**, una plataforma de rastreo GPS de flotas heterogéneas: vehículos, maquinaria agrícola (cosechadoras, tractores) y candados electrónicos. Permite a los clientes ver y gestionar sus unidades desde el celular.
+App Android nativa de **GPS WOX**, una plataforma de rastreo GPS de flotas heterogéneas: vehículos, maquinaria agrícola (cosechadoras, tractores) y candados electrónicos. Permite a los clientes ver y gestionar sus unidades desde el celular.
 
 El backend es **GPSWOX** (Laravel 9 + Passport OAuth2), consumido a través de `clientlite`, una API específica para clientes móviles.
 
 > Terminología: en la interfaz y en el código se usa **"unidad"** o **"activo"**, nunca "vehículo" — la flota incluye equipos que no son vehículos.
 
-## ⚠️ Aviso de seguridad: el servidor de SOLTELEMATIC no tiene TLS todavía
+## ⚠️ Aviso de seguridad: el servidor de GPS WOX no tiene TLS todavía
 
-El servidor de SOLTELEMATIC responde por **HTTP sin cifrar**, no HTTPS. La app permite tráfico en claro únicamente hacia esa IP específica (`app/src/main/res/xml/network_security_config.xml`), no hacia cualquier destino.
+El servidor de GPS WOX responde por **HTTP sin cifrar**, no HTTPS. La app permite tráfico en claro únicamente hacia esa IP específica (`app/src/main/res/xml/network_security_config.xml`), no hacia cualquier destino.
 
 **Qué significa esto en la práctica:** si usás la app en una red no confiable (WiFi pública, por ejemplo), alguien más en esa misma red podría interceptar tus credenciales de inicio de sesión y los datos de posición de las unidades, porque viajan sin cifrar.
 
 Migrar a HTTPS está en el plan, pero requiere un dominio propio — Let's Encrypt (y prácticamente cualquier autoridad certificadora) no emite certificados para direcciones IP directamente, solo para nombres de dominio. Hasta que eso se resuelva, esta limitación se mantiene.
 
-## Instalar la app (usuarios de SOLTELEMATIC)
+## Instalar la app (usuarios de GPS WOX)
 
-No necesitás compilar nada, ni tener una API key de Google Maps, ni configurar un servidor: el APK publicado ya está listo para usarse con tus credenciales de SOLTELEMATIC.
+No necesitás compilar nada, ni tener una API key de Google Maps, ni configurar un servidor: el APK publicado ya está listo para usarse con tus credenciales de GPS WOX.
 
 **Vía [Obtainium](https://github.com/ImranR98/Obtainium):**
 
 1. Instalá Obtainium.
-2. "Add App" → pegá la URL de este repositorio de GitHub.
+2. "Add App" → pegá la URL de este repositorio de GitHub (`https://github.com/Josecarlospp04/gps-wox-app`).
 3. Obtainium detecta los releases y te deja instalar/actualizar el APK adjunto directamente, sin pasar por una tienda de aplicaciones.
-4. Abrí la app e iniciá sesión con tu usuario y contraseña de SOLTELEMATIC.
+4. Abrí la app e iniciá sesión con tu usuario y contraseña de GPS WOX.
 
 Eso es todo — no hay ningún paso de configuración adicional para este flujo.
 
@@ -67,7 +67,7 @@ o desde Android Studio, con un dispositivo/emulador conectado.
 
 ### Parches necesarios en el servidor GPSWOX
 
-Estos cinco parches se aplicaron directamente sobre la instalación de GPSWOX que usa SOLTELEMATIC — **no son parte de este repo** ni de la app Android, viven del lado del servidor. Si usás tu propia instancia de GPSWOX vas a necesitar los mismos, y **hay que volver a aplicarlos después de cada actualización de la plataforma GPSWOX**, porque el proceso de actualización sobrescribe estos archivos y no los conserva.
+Estos cinco parches se aplicaron directamente sobre la instalación de GPSWOX que usa GPS WOX — **no son parte de este repo** ni de la app Android, viven del lado del servidor. Si usás tu propia instancia de GPSWOX vas a necesitar los mismos, y **hay que volver a aplicarlos después de cada actualización de la plataforma GPSWOX**, porque el proceso de actualización sobrescribe estos archivos y no los conserva.
 
 **1. Passthrough de la cabecera `Authorization` en `.htaccess`**
 
@@ -167,13 +167,13 @@ El build type `release` firma automáticamente si encontrás estas 4 propiedades
 Primero generá tu propio keystore (nunca commitees el archivo `.jks` resultante — ya está en `.gitignore`):
 
 ```
-keytool -genkeypair -v -keystore release.jks -alias soltelematic -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkeypair -v -keystore release.jks -alias gpswox -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 Vas a necesitar el SHA-1 de esa firma para restringir tu API key de Google Maps a tu propio `applicationId` + certificado, en vez de dejarla abierta:
 
 ```
-keytool -list -v -keystore release.jks -alias soltelematic
+keytool -list -v -keystore release.jks -alias gpswox
 ```
 
 (buscá la línea `SHA1:` en la salida — esa es la huella que se agrega en las restricciones de la API key en Google Cloud Console).
@@ -183,7 +183,7 @@ Agregá a tu `local.properties`:
 ```properties
 RELEASE_STORE_FILE=../release.jks
 RELEASE_STORE_PASSWORD=tu-contraseña-del-keystore
-RELEASE_KEY_ALIAS=soltelematic
+RELEASE_KEY_ALIAS=gpswox
 RELEASE_KEY_PASSWORD=tu-contraseña-de-la-clave
 ```
 

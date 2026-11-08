@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SOLTELEMATIC</string>
+    <string name="app_name">GPS WOX</string>
 
     <string name="login_title">Iniciar sesión</string>
     <string name="login_subtitle">Monitoreo de unidades en tiempo real</string>
@@ -18,7 +18,7 @@
     <string name="login_error_timeout">El servidor tardó demasiado en responder</string>
     <string name="login_error_server">Ocurrió un error en el servidor. Intenta de nuevo</string>
     <string name="login_forgot_password">¿Olvidaste tu contraseña?</string>
-    <string name="login_footer_network">Conectado a la red SOLTELEMATIC</string>
+    <string name="login_footer_network">Conectado a la red GPS WOX</string>
     <string name="login_footer_version">v%1$s</string>
 
     <string name="forgot_title">Recuperar contraseña</string>

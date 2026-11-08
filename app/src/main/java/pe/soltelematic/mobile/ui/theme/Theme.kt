@@ -43,7 +43,7 @@ data class BrandConfig(
     val logoUrl: String?,
 )
 
-private const val DefaultBrandName = "SOLTELEMATIC"
+private const val DefaultBrandName = "GPS WOX"
 
 /**
  * Tema raíz de SOLTELEMATIC Mobile con soporte white-label.

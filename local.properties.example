@@ -1,0 +1,15 @@
+# Copia este archivo a local.properties (no versionado) y completa los valores.
+# sdk.dir lo escribe Android Studio automáticamente.
+# sdk.dir=
+
+# URL base de la API móvil, con prefijo /api/app/clientlite/ y barra final
+SOLTELEMATIC_BASE_URL=
+
+# Clave de Google Maps (restringida a pe.gpswox.mobile + SHA-1)
+MAPS_API_KEY=
+
+# Firma de release (keystore propio de GPS WOX; *.jks está en .gitignore)
+RELEASE_STORE_FILE=
+RELEASE_STORE_PASSWORD=
+RELEASE_KEY_ALIAS=
+RELEASE_KEY_PASSWORD=
