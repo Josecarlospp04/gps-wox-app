@@ -32,6 +32,13 @@ data class HistoryDateRange(val from: LocalDate, val to: LocalDate, val preset: 
             return HistoryDateRange(to.minusDays(6), to, Preset.LAST_7_DAYS)
         }
 
+        /** Un solo día: "Hoy" y "Ayer" conservan su chip; cualquier otra fecha entra como rango propio. */
+        fun forDay(day: LocalDate, today: LocalDate = LocalDate.now()): HistoryDateRange = when (day) {
+            today -> HistoryDateRange(day, day, Preset.TODAY)
+            today.minusDays(1) -> HistoryDateRange(day, day, Preset.YESTERDAY)
+            else -> HistoryDateRange(day, day, Preset.CUSTOM)
+        }
+
         /** from se recorta hacia adelante si el rango elegido supera los 31 días; to nunca se toca. */
         fun custom(from: LocalDate, to: LocalDate): HistoryDateRange {
             val earliestAllowed = to.minusDays(MAX_SPAN_DAYS - 1)

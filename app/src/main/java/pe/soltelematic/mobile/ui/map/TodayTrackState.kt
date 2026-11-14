@@ -12,7 +12,7 @@ import java.time.LocalDate
 enum class TodayTrackStatus { LOADING, READY, EMPTY, ERROR }
 
 /**
- * Modo "Recorrido de hoy" del mapa principal (null en MapUiState = fuera del modo). Vive aparte de
+ * Modo "Última ruta" del mapa principal (null en MapUiState = fuera del modo). Vive aparte de
  * selectedAssetId/focusedAssetId a propósito: en el modo nunca hay hoja, cola ni seguimiento de
  * cámara, así que esos campos quedan en null y el comportamiento de tocar una unidad no se toca.
  *
@@ -38,7 +38,12 @@ data class TodayTrackState(
     // Etapa 3 (ver TodayTrackLive.kt): puntos del sondeo aún no cubiertos por getTodayRoute y día
     // al que pertenece el recorrido cargado (para detectar el cruce de medianoche).
     val provisional: List<ProvisionalPoint> = emptyList(),
-    val dayDate: LocalDate = LocalDate.now()
+    // Día que muestra el modo ("Última ruta"): hoy o el día completo más reciente con recorrido.
+    // La actualización en vivo solo corre si es hoy (ver MapViewModel.refreshTodayTrack).
+    val dayDate: LocalDate = LocalDate.now(),
+    // true si el día se cargó cuando ya había terminado (día pasado, datos completos): no caduca.
+    // false = se cargó siendo hoy, así que al cruzar la medianoche hay que volver a buscar.
+    val dayComplete: Boolean = false
 )
 
 /** Solo se despliega la lista cuando hay recorrido (READY); plegar siempre es posible. */

@@ -236,9 +236,10 @@ class TodayTrackLiveTest {
     fun `si el dibujo no cambia se conserva la misma instancia de mapData`() {
         val before = ready()
         // Solo cambia el fin de la parada final (no el dibujo del mapa).
-        val grown = route(stop(ORIGIN, 0, 99))
+        // Con un tramo "drive": sin él no hay recorrido (EMPTY) y ya no se dibuja nada.
+        val grown = route(stop(ORIGIN, 0, 10), drive(DRIVE_POINTS, 10), stop(DRIVE_END, 12, 99))
         val first = before.copy(route = grown, mapData = grown.toRouteMapData())
-        val grownMore = route(stop(ORIGIN, 0, 120))
+        val grownMore = route(stop(ORIGIN, 0, 10), drive(DRIVE_POINTS, 10), stop(DRIVE_END, 12, 120))
 
         val after = first.withRefreshedRoute(grownMore, grownMore.toRouteMapData())
 

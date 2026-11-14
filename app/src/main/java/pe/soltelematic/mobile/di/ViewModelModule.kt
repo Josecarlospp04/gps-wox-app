@@ -25,7 +25,7 @@ val viewModelModule = module {
     // assetId llega por parametersOf desde koinViewModel (ver AssetDetailScreen), no por get():
     // es un argumento de navegación, no una dependencia inyectable.
     viewModel { (assetId: Int) -> AssetDetailViewModel(assetId, get(), get(), get()) }
-    viewModel { (assetId: Int) -> HistoryViewModel(assetId, get(), get(), get()) }
+    viewModel { (assetId: Int, initialDay: LocalDate) -> HistoryViewModel(assetId, initialDay, get(), get(), get()) }
     viewModel { (assetId: Int, from: LocalDate, to: LocalDate) -> ParameterChartsViewModel(assetId, from, to, get()) }
     viewModel { EventsViewModel(get(), get(), get(), get()) }
     viewModel { EventMapViewModel(get(), get(), get()) }

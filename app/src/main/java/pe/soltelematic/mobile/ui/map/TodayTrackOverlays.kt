@@ -29,7 +29,7 @@ import pe.soltelematic.mobile.ui.theme.SoltelematicSpacing
 
 /**
  * Lista de sugerencias bajo el buscador del mapa (máx. MAX_SEARCH_SUGGESTIONS filas, ver
- * MapUiState.searchSuggestions). Elegir una fila entra en el modo "Recorrido de hoy".
+ * MapUiState.searchSuggestions). Elegir una fila entra en el modo "Última ruta".
  */
 @Composable
 fun SearchSuggestionsList(
@@ -73,13 +73,15 @@ fun SearchSuggestionsList(
 }
 
 /**
- * Indicador del modo "Recorrido de hoy": nombre de la unidad y botón X para salir. Ocupa el lugar
+ * Indicador del modo "Última ruta": nombre de la unidad y botón X para salir. Ocupa el lugar
  * de los chips de filtro mientras dura el modo; el estado del recorrido (cargando / sin recorrido /
  * error) y el resumen viven en TodayTrackPanel.
  */
 @Composable
 fun TodayTrackChip(
     unitName: String,
+    // "Hoy" / "Ayer" / fecha del día que se muestra; null mientras carga o sin recorrido.
+    dayText: String?,
     onExit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -95,7 +97,11 @@ fun TodayTrackChip(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.today_track_title),
+                    text = if (dayText != null) {
+                        stringResource(R.string.today_track_title_with_day, stringResource(R.string.today_track_title), dayText)
+                    } else {
+                        stringResource(R.string.today_track_title)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -29,6 +29,9 @@ import pe.soltelematic.mobile.core.network.UnseenEventsPoller
 import pe.soltelematic.mobile.core.result.ApiError
 import pe.soltelematic.mobile.core.result.ApiResult
 import pe.soltelematic.mobile.core.storage.UserPreferencesDataStore
+import pe.soltelematic.mobile.data.repository.LastRouteResult
+import pe.soltelematic.mobile.data.repository.findLastRoute
+import pe.soltelematic.mobile.data.repository.hasDrive
 import pe.soltelematic.mobile.domain.model.Asset
 import pe.soltelematic.mobile.domain.model.AssetFilter
 import pe.soltelematic.mobile.domain.model.AssetStatusType
@@ -44,6 +47,7 @@ import pe.soltelematic.mobile.ui.history.AddressResolution
 import pe.soltelematic.mobile.ui.history.toRouteMapData
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 // Refresco completo del recorrido de hoy mientras dura el modo (los puntos entre refrescos llegan
 // por el sondeo de 7 s, ver withLivePoint).
@@ -69,6 +73,7 @@ class MapViewModel(
     private var statsJob: Job? = null
     private var addressJob: Job? = null
     private var trackJob: Job? = null
+    private var switchToTodayJob: Job? = null
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
@@ -451,7 +456,7 @@ class MapViewModel(
                 todayTrack = TodayTrackState(assetId = id)
             )
         }
-        loadTodayTrack(id)
+        loadLastRoute(id)
     }
 
     /** Enter en el buscador: solo selecciona si hay una única sugerencia. */
@@ -463,7 +468,7 @@ class MapViewModel(
     fun onTodayTrackRetry() {
         val track = _uiState.value.todayTrack ?: return
         _uiState.update { it.copy(todayTrack = track.copy(status = TodayTrackStatus.LOADING)) }
-        loadTodayTrack(track.assetId)
+        loadLastRoute(track.assetId)
     }
 
     /** Tocar la unidad seguida (único marcador visible en el modo): centra la cámara en ella. */
@@ -555,7 +560,10 @@ class MapViewModel(
         } else if (lastTrackedMoving != moving) {
             lastTrackedMoving = moving
             refreshNow.trySend(Unit)
+            if (moving) switchToTodayIfShowingPastDay(track)
         }
+        // Puntos en vivo solo si el día mostrado es hoy: sobre un día pasado no tienen sentido.
+        if (track.dayDate != LocalDate.now()) return
         val position = asset.position ?: return
         updateTrack { it.withLivePoint(position, asset.lastSeenAt ?: Instant.now()) }
     }
@@ -583,7 +591,14 @@ class MapViewModel(
         if (track.isStaleDay(today)) {
             lastRefreshFailed = false
             updateTrack { it.forNewDay(today) }
-            loadTodayTrack(id)
+            loadLastRoute(id)
+            return
+        }
+        // Mostrando un día pasado no hay actualización en vivo; solo se vigila si la unidad ya se
+        // mueve (cubre el caso en que se abrió el modo con la unidad en marcha y hoy aún sin viaje).
+        if (track.dayDate != today) {
+            val moving = _uiState.value.assets.firstOrNull { it.id == id }?.status?.type == AssetStatusType.ONLINE
+            if (moving) switchToTodayIfShowingPastDay(track)
             return
         }
         if (track.status != TodayTrackStatus.READY && track.status != TodayTrackStatus.EMPTY) return
@@ -607,34 +622,85 @@ class MapViewModel(
         liveLoopAssetId = null
         lastRefreshFailed = false
         trackJob?.cancel()
+        switchToTodayJob?.cancel()
         _uiState.update { it.copy(todayTrack = null, fleetFitRequestId = it.fleetFitRequestId + 1) }
     }
 
-    private fun loadTodayTrack(id: Int) {
+    /**
+     * Pasa de un dÃ­a pasado a hoy en cuanto hoy tiene algÃºn tramo "drive". Si hoy aÃºn no lo tiene
+     * (el servidor tarda en armar el viaje) o la peticiÃ³n falla, se queda en el dÃ­a mostrado: nunca
+     * cambia a un hoy vacÃ­o. Una sola comprobaciÃ³n a la vez.
+     */
+    private fun switchToTodayIfShowingPastDay(track: TodayTrackState) {
+        if (track.status != TodayTrackStatus.READY || track.dayDate == LocalDate.now()) return
+        if (switchToTodayJob?.isActive == true) return
+        val id = track.assetId
+        switchToTodayJob = viewModelScope.launch {
+            val result = assetDetailRepository.getTodayRoute(id) as? ApiResult.Success ?: return@launch
+            val route = result.data
+            if (!route.hasDrive()) return@launch
+            val mapData = withContext(Dispatchers.Default) { route.toRouteMapData() }
+            updateTrack { current ->
+                if (current.assetId != id) current else current.switchedToToday(route, mapData, LocalDate.now()) ?: current
+            }
+        }
+    }
+
+    /**
+     * Carga la "Ãšltima ruta": hoy y, si hoy no tiene ningÃºn viaje, hacia atrÃ¡s dÃ­a por dÃ­a hasta 7
+     * dÃ­as en total (ver findLastRoute). La hora del Ãºltimo reporte de la unidad permite saltar
+     * directo al dÃ­a en que dejÃ³ de reportar.
+     */
+    private fun loadLastRoute(id: Int) {
         trackJob?.cancel()
+        switchToTodayJob?.cancel()
         trackJob = viewModelScope.launch {
-            when (val result = assetDetailRepository.getTodayRoute(id)) {
-                is ApiResult.Success -> {
-                    val route = result.data
-                    // Mapeo fuera del hilo principal: un día largo trae miles de posiciones.
-                    val mapData = withContext(Dispatchers.Default) { route.toRouteMapData() }
+            val today = LocalDate.now()
+            val lastSeenDay = _uiState.value.assets.firstOrNull { it.id == id }?.lastSeenAt
+                ?.atZone(ZoneId.systemDefault())?.toLocalDate()
+            val result = findLastRoute(today, lastSeenDay) { day -> assetDetailRepository.getDayRoute(id, day) }
+            when (result) {
+                is LastRouteResult.Found -> {
+                    // Mapeo fuera del hilo principal: un dÃ­a largo trae miles de posiciones.
+                    val mapData = withContext(Dispatchers.Default) { result.route.toRouteMapData() }
                     _uiState.update { state ->
                         val track = state.todayTrack ?: return@update state
-                        // Llegó tarde: el usuario ya cambió de unidad o salió del modo.
+                        // LlegÃ³ tarde: el usuario ya cambiÃ³ de unidad o saliÃ³ del modo.
                         if (track.assetId != id) return@update state
                         state.copy(
                             todayTrack = track.copy(
-                                status = if (route.legs.isEmpty()) TodayTrackStatus.EMPTY else TodayTrackStatus.READY,
-                                route = route,
+                                status = TodayTrackStatus.READY,
+                                route = result.route,
                                 mapData = mapData,
                                 selectedLegIndex = null,
                                 addresses = emptyMap(),
+                                provisional = emptyList(),
+                                dayDate = result.day,
+                                dayComplete = result.day.isBefore(today),
                                 frameRequestId = track.frameRequestId + 1
                             )
                         )
                     }
                 }
-                is ApiResult.Error -> _uiState.update { state ->
+                LastRouteResult.NoRoute -> _uiState.update { state ->
+                    val track = state.todayTrack ?: return@update state
+                    if (track.assetId != id) return@update state
+                    // dayDate = hoy: el modo sigue vigilando hoy por si la unidad empieza a moverse.
+                    state.copy(
+                        todayTrack = track.copy(
+                            status = TodayTrackStatus.EMPTY,
+                            route = null,
+                            mapData = null,
+                            selectedLegIndex = null,
+                            addresses = emptyMap(),
+                            provisional = emptyList(),
+                            dayDate = today,
+                            dayComplete = false,
+                            frameRequestId = track.frameRequestId + 1
+                        )
+                    )
+                }
+                is LastRouteResult.Failed -> _uiState.update { state ->
                     val track = state.todayTrack ?: return@update state
                     if (track.assetId != id) return@update state
                     state.copy(todayTrack = track.copy(status = TodayTrackStatus.ERROR, frameRequestId = track.frameRequestId + 1))

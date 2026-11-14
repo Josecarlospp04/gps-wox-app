@@ -63,7 +63,7 @@ private val HandleHeight = 4.dp
 private const val TOP_SETTLE_MS = 120L
 
 /**
- * Panel inferior del modo "Recorrido de hoy" (no modal, alineado abajo en MapScreen).
+ * Panel inferior del modo "Última ruta" (no modal, alineado abajo en MapScreen).
  *
  * Plegado: resumen del día (mismas tarjetas que Historial) o el estado cargando / sin recorrido /
  * error con "Reintentar". Desplegado: además "Ver historial completo" y la lista de tramos con las
@@ -228,6 +228,12 @@ private fun PanelHeader(
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.today_track_retry)) }
                 }
                 TodayTrackStatus.READY -> track.route?.let { route ->
+                    Text(
+                        text = trackDayText(track.dayDate),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(bottom = SoltelematicSpacing.xs)
+                    )
                     RouteSummaryCards(legs = route.legs, periodStats = route.periodStats)
                 }
             }

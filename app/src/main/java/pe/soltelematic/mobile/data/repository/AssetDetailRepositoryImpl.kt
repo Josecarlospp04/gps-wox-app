@@ -16,6 +16,7 @@ import pe.soltelematic.mobile.domain.model.ServiceCreateForm
 import pe.soltelematic.mobile.domain.model.ServiceCreateRequest
 import pe.soltelematic.mobile.domain.model.UnitStat
 import pe.soltelematic.mobile.domain.repository.AssetDetailRepository
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -28,6 +29,13 @@ private val HISTORY_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern
  */
 internal fun todayRange(now: LocalDateTime = LocalDateTime.now()): Pair<LocalDateTime, LocalDateTime> =
     now.toLocalDate().atStartOfDay() to now
+
+/**
+ * Rango de un día para la "Última ruta": hoy, de medianoche a [now]; un día pasado, completo
+ * (00:00:00 a 23:59:59, mismo cierre que HistoryDateRange).
+ */
+internal fun dayRange(day: LocalDate, now: LocalDateTime = LocalDateTime.now()): Pair<LocalDateTime, LocalDateTime> =
+    if (day == now.toLocalDate()) todayRange(now) else day.atStartOfDay() to day.atTime(23, 59, 59)
 
 // La app solo envía comandos GPRS -- SMS no está implementado (ver AssetDetailRepository.getCommands).
 private const val COMMANDS_CONNECTION_GPRS = "gprs"
@@ -76,6 +84,11 @@ class AssetDetailRepositoryImpl(
 
     override suspend fun getTodayRoute(id: Int): ApiResult<HistoryRoute> {
         val (from, to) = todayRange()
+        return getRoute(id, from, to)
+    }
+
+    override suspend fun getDayRoute(id: Int, day: LocalDate): ApiResult<HistoryRoute> {
+        val (from, to) = dayRange(day)
         return getRoute(id, from, to)
     }
 

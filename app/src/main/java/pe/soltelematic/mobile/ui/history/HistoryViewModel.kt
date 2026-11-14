@@ -40,12 +40,13 @@ private const val VISUAL_UPDATE_INTERVAL_MS = 1000L / 30 // ~33ms, 30Hz
 /** assetId por parámetro de Koin, igual que AssetDetailViewModel -- ver ViewModelModule. */
 class HistoryViewModel(
     private val assetId: Int,
+    initialDay: LocalDate,
     private val assetDetailRepository: AssetDetailRepository,
     private val userPreferencesDataStore: UserPreferencesDataStore,
     private val assetRepository: AssetRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HistoryUiState())
+    private val _uiState = MutableStateFlow(HistoryUiState(dateRange = HistoryDateRange.forDay(initialDay)))
     val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
 
     // Caché de direcciones por coordenada exacta: vive mientras viva este ViewModel (una entrada

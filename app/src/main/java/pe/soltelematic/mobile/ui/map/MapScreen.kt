@@ -80,6 +80,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import java.time.LocalDate
 import pe.soltelematic.mobile.R
 import pe.soltelematic.mobile.domain.model.Asset
 import pe.soltelematic.mobile.domain.model.AssetFilter
@@ -104,7 +105,8 @@ import pe.soltelematic.mobile.ui.theme.SoltelematicSpacing
 @Composable
 fun MapScreen(
     onOpenAssetDetail: (Int) -> Unit,
-    onOpenHistory: (Int) -> Unit,
+    // El día es el que muestra la Última ruta; null = abrir Historial en "Hoy".
+    onOpenHistory: (Int, LocalDate?) -> Unit,
     onOpenEvents: () -> Unit,
     viewModel: MapViewModel = koinViewModel(),
     mapEngine: MapEngine = koinInject()
@@ -479,6 +481,7 @@ fun MapScreen(
                 if (todayTrack != null) {
                     TodayTrackChip(
                         unitName = uiState.trackedAsset?.name.orEmpty(),
+                        dayText = if (todayTrack.status == TodayTrackStatus.READY) trackDayText(todayTrack.dayDate) else null,
                         onExit = viewModel::onExitTodayTrack,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -523,7 +526,7 @@ fun MapScreen(
                 onLegClick = viewModel::onTodayLegSelected,
                 onStopRowVisible = viewModel::onTodayStopRowVisible,
                 onRetry = viewModel::onTodayTrackRetry,
-                onOpenHistory = { onOpenHistory(todayTrack.assetId) },
+                onOpenHistory = { onOpenHistory(todayTrack.assetId, todayTrack.dayDate) },
                 onSheetTopChanged = { sheetTopPx = it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -597,7 +600,7 @@ fun MapScreen(
                 isAddressLoading = uiState.isSelectedAssetAddressLoading,
                 onDismiss = viewModel::onBottomSheetClosed,
                 onOpenDetail = { onOpenAssetDetail(asset.id) },
-                onOpenHistory = { onOpenHistory(asset.id) },
+                onOpenHistory = { onOpenHistory(asset.id, null) },
                 onSheetTopChanged = { sheetTopPx = it }
             )
         }

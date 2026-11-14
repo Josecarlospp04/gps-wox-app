@@ -32,13 +32,16 @@
 
     <string name="map_search_placeholder">Buscar unidad, placa o conductor</string>
     <string name="map_search_clear">Limpiar búsqueda</string>
-    <string name="today_track_title">Recorrido de hoy</string>
-    <string name="today_track_exit">Salir del recorrido de hoy</string>
+    <string name="today_track_title">Última ruta</string>
+    <string name="today_track_title_with_day">%1$s · %2$s</string>
+    <string name="today_track_day_today">Hoy</string>
+    <string name="today_track_day_yesterday">Ayer</string>
+    <string name="today_track_exit">Salir de la última ruta</string>
     <string name="today_track_loading">Cargando recorrido…</string>
-    <string name="today_track_empty">Sin recorrido hoy</string>
+    <string name="today_track_empty">Sin recorrido en los últimos 7 días</string>
     <string name="today_track_error">No se pudo cargar el recorrido</string>
     <string name="today_track_retry">Reintentar</string>
-    <string name="today_track_suggestion_action">Ver recorrido de hoy</string>
+    <string name="today_track_suggestion_action">Ver última ruta</string>
     <string name="today_track_refresh_failed">No se pudo actualizar el recorrido</string>
     <string name="today_track_open_history">Ver historial completo</string>
     <string name="today_track_panel_expand">Desplegar la lista de tramos</string>

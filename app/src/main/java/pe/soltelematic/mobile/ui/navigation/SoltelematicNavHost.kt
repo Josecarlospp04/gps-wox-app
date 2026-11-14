@@ -148,8 +148,8 @@ fun SoltelematicNavHost(
                     onOpenAssetDetail = { assetId ->
                         navController.navigate(Destination.AssetDetail.createRoute(assetId))
                     },
-                    onOpenHistory = { assetId ->
-                        navController.navigate(Destination.History.createRoute(assetId))
+                    onOpenHistory = { assetId, day ->
+                        navController.navigate(Destination.History.createRoute(assetId, day))
                     },
                     onOpenEvents = { navigateToTab(Destination.Events) }
                 )
@@ -251,11 +251,22 @@ fun SoltelematicNavHost(
             }
             composable(
                 route = Destination.History.route,
-                arguments = listOf(navArgument(Destination.History.ARG_ID) { type = NavType.IntType })
+                arguments = listOf(
+                    navArgument(Destination.History.ARG_ID) { type = NavType.IntType },
+                    navArgument(Destination.History.ARG_DAY) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
             ) { backStackEntry ->
                 val assetId = backStackEntry.arguments?.getInt(Destination.History.ARG_ID) ?: return@composable
+                // Fecha inválida o ausente -> hoy (ver HistoryDateRange.forDay).
+                val day = backStackEntry.arguments?.getString(Destination.History.ARG_DAY)
+                    ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
                 HistoryScreen(
                     assetId = assetId,
+                    initialDay = day ?: LocalDate.now(),
                     onBack = { navController.popBackStack() },
                     onOpenParameterCharts = { from, to ->
                         navController.navigate(Destination.ParameterCharts.createRoute(assetId, from, to))

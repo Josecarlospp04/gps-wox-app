@@ -6,6 +6,7 @@ private const val ASSET_ID_ARG = "assetId"
 private const val EVENT_ID_ARG = "eventId"
 private const val ALERT_ID_ARG = "alertId"
 private const val FROM_ARG = "from"
+private const val DAY_ARG = "day"
 private const val TO_ARG = "to"
 
 /**
@@ -34,9 +35,13 @@ sealed class Destination(val route: String) {
         const val ARG_ID = ASSET_ID_ARG
         fun createRoute(assetId: Int) = "asset/$assetId"
     }
-    data object History : Destination("asset/{$ASSET_ID_ARG}/history") {
+    // day (yyyy-MM-dd) es opcional: sin él Historial abre en "Hoy". Lo usa "Ver historial completo"
+    // de la Última ruta para abrir el día que se estaba mostrando.
+    data object History : Destination("asset/{$ASSET_ID_ARG}/history?$DAY_ARG={$DAY_ARG}") {
         const val ARG_ID = ASSET_ID_ARG
-        fun createRoute(assetId: Int) = "asset/$assetId/history"
+        const val ARG_DAY = DAY_ARG
+        fun createRoute(assetId: Int, day: LocalDate? = null) =
+            if (day == null) "asset/$assetId/history" else "asset/$assetId/history?$DAY_ARG=$day"
     }
     // from/to viajan en la ruta como LocalDate.toString() (yyyy-MM-dd, sin '/') -- mismo rango que
     // el usuario tenía elegido en Historial (ver HistoryScreen.onOpenParameterCharts), no un rango

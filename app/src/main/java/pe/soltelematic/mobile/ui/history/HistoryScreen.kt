@@ -77,11 +77,13 @@ private val CalendarButtonBorderWidth = 1.dp
 @Composable
 fun HistoryScreen(
     assetId: Int,
+    // Día con el que abre (la fecha del selector); hoy salvo que se llegue desde la Última ruta.
+    initialDay: LocalDate,
     onBack: () -> Unit,
     // El rango lo decide quien llama (SoltelematicNavHost): las gráficas son del mismo periodo que
     // el usuario tenía elegido acá, no de uno propio -- ver HistoryTimeline.onOpenParameterCharts.
     onOpenParameterCharts: (from: LocalDate, to: LocalDate) -> Unit,
-    viewModel: HistoryViewModel = koinViewModel(parameters = { parametersOf(assetId) }),
+    viewModel: HistoryViewModel = koinViewModel(parameters = { parametersOf(assetId, initialDay) }),
     routeMapEngine: RouteMapEngine = koinInject()
 ) {
     val uiState by viewModel.uiState.collectAsState()

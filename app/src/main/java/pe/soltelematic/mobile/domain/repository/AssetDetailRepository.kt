@@ -10,6 +10,7 @@ import pe.soltelematic.mobile.domain.model.SendCommandOutcome
 import pe.soltelematic.mobile.domain.model.ServiceCreateForm
 import pe.soltelematic.mobile.domain.model.ServiceCreateRequest
 import pe.soltelematic.mobile.domain.model.UnitStat
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -33,6 +34,12 @@ interface AssetDetailRepository {
      * mapa principal. Mismo endpoint y mismo rango que getTodayStats, pero con la ruta completa.
      */
     suspend fun getTodayRoute(id: Int): ApiResult<HistoryRoute>
+
+    /**
+     * Ruta de un día completo para la búsqueda de la "Última ruta" (ver findLastRoute): hoy va de
+     * 00:00 a ahora (igual que getTodayRoute); un día pasado, de 00:00:00 a 23:59:59.
+     */
+    suspend fun getDayRoute(id: Int, day: LocalDate): ApiResult<HistoryRoute>
 
     /**
      * Series de parámetros (voltaje, batería, señal, satélites, velocidad, combustible) para las

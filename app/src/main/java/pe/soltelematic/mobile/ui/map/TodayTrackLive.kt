@@ -1,5 +1,6 @@
 package pe.soltelematic.mobile.ui.map
 
+import pe.soltelematic.mobile.data.repository.hasDrive
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.HistoryDriveLeg
 import pe.soltelematic.mobile.domain.model.HistoryRoute
@@ -61,7 +62,9 @@ fun TodayTrackState.withLivePoint(point: GeoPoint, time: Instant): TodayTrackSta
  */
 fun TodayTrackState.withRefreshedRoute(newRoute: HistoryRoute, newMapData: RouteMapData): TodayTrackState {
     if (status == TodayTrackStatus.LOADING || status == TodayTrackStatus.ERROR) return this
-    val newStatus = if (newRoute.legs.isEmpty()) TodayTrackStatus.EMPTY else TodayTrackStatus.READY
+    // Recorrido = algún tramo "drive": hoy con solo paradas no es recorrido (se muestra el día anterior
+    // con viaje, o "sin recorrido"), así que tampoco se dibujan sus paradas.
+    val newStatus = if (newRoute.hasDrive()) TodayTrackStatus.READY else TodayTrackStatus.EMPTY
     val covered = newRoute.coveredUntil()
     val keptProvisional = when {
         newStatus == TodayTrackStatus.EMPTY -> emptyList()
@@ -70,8 +73,12 @@ fun TodayTrackState.withRefreshedRoute(newRoute: HistoryRoute, newMapData: Route
     }
     return copy(
         status = newStatus,
-        route = newRoute,
-        mapData = if (newMapData == mapData) mapData else newMapData,
+        route = if (newStatus == TodayTrackStatus.EMPTY) null else newRoute,
+        mapData = when {
+            newStatus == TodayTrackStatus.EMPTY -> null
+            newMapData == mapData -> mapData
+            else -> newMapData
+        },
         provisional = keptProvisional,
         selectedLegIndex = selectedLegIndex?.takeIf { sameLeg(route, newRoute, it) },
         addresses = addresses.filterKeys { sameLeg(route, newRoute, it) },
@@ -93,8 +100,11 @@ fun TodayTrackState.provisionalPath(): List<GeoPoint> {
     return listOf(anchor) + provisional.map { it.point }
 }
 
-/** Se cruzó la medianoche desde que se cargó este día. */
-fun TodayTrackState.isStaleDay(today: LocalDate): Boolean = dayDate != today
+/**
+ * Se cruzó la medianoche desde que se cargó este día. Un día pasado cargado ya completo
+ * ([TodayTrackState.dayComplete]) nunca caduca: sigue siendo la última ruta aunque no sea hoy.
+ */
+fun TodayTrackState.isStaleDay(today: LocalDate): Boolean = dayDate != today && !dayComplete
 
 /** Nuevo día: mismo modo y unidad, recorrido vacío y cargando; sin plegar/desplegar nada heredado. */
 fun TodayTrackState.forNewDay(today: LocalDate): TodayTrackState = TodayTrackState(
@@ -104,3 +114,23 @@ fun TodayTrackState.forNewDay(today: LocalDate): TodayTrackState = TodayTrackSta
     centerRequestId = centerRequestId,
     legFocusRequestId = legFocusRequestId
 )
+
+/**
+ * Pasa de un día pasado a hoy: mismo modo y unidad, recorrido de hoy ya cargado, sin selección ni
+ * panel heredados, y reencuadre. Null si no corresponde (no hay un día pasado listo en pantalla, o
+ * hoy aún no tiene ningún tramo "drive": nunca se cambia a un hoy sin recorrido).
+ */
+fun TodayTrackState.switchedToToday(todayRoute: HistoryRoute, todayMapData: RouteMapData, today: LocalDate): TodayTrackState? {
+    if (status != TodayTrackStatus.READY || dayDate == today || !todayRoute.hasDrive()) return null
+    return TodayTrackState(
+        assetId = assetId,
+        status = TodayTrackStatus.READY,
+        route = todayRoute,
+        mapData = todayMapData,
+        frameRequestId = frameRequestId + 1,
+        centerRequestId = centerRequestId,
+        legFocusRequestId = legFocusRequestId,
+        dayDate = today,
+        dayComplete = false
+    )
+}
