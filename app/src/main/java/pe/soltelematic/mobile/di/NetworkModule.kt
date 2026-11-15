@@ -18,7 +18,6 @@ import pe.soltelematic.mobile.core.storage.SecureTokenStorage
 import pe.soltelematic.mobile.core.storage.SeenEventsStore
 import pe.soltelematic.mobile.core.storage.TokenStorage
 import pe.soltelematic.mobile.core.storage.UserPreferencesDataStore
-import pe.soltelematic.mobile.debug.responseDumpInterceptor
 import pe.soltelematic.mobile.data.remote.api.AlertsApi
 import pe.soltelematic.mobile.data.remote.api.AssetDetailApi
 import pe.soltelematic.mobile.data.remote.api.AssetsApi
@@ -100,8 +99,6 @@ val networkModule = module {
             .addInterceptor(get<AuthInterceptor>())
             .authenticator(get<TokenAuthenticator>())
             .apply { if (BuildConfig.DEBUG) addInterceptor(debugLoggingInterceptor()) }
-            // Herramienta de debug (volcado de cuerpos de respuesta); null en release.
-            .apply { responseDumpInterceptor(androidContext())?.let { addInterceptor(it) } }
             .build()
     }
 
