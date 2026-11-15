@@ -12,6 +12,8 @@ import pe.soltelematic.mobile.domain.model.HistoryLeg
 import pe.soltelematic.mobile.domain.model.HistoryPosition
 import pe.soltelematic.mobile.domain.model.HistoryRoute
 import pe.soltelematic.mobile.domain.model.HistoryStopLeg
+import pe.soltelematic.mobile.domain.model.RouteEvent
+import pe.soltelematic.mobile.domain.model.classifyRouteEventTitle
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -26,10 +28,24 @@ private val POSITION_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPatter
 
 fun HistoryDataDto.toDomain(): HistoryRoute = HistoryRoute(
     periodStats = stats.map { it.toDomain() },
-    // status="event" (end/stats/positions en null) es de la pantalla de Alertas, no de Historial
-    // -- toLegOrNull() los descarta acá, el resto del mapper nunca los ve.
-    legs = items.mapNotNull { it.toLegOrNull() }
+    // status="event" (end/stats/positions en null) NO es un tramo: toLegOrNull() lo descarta y va a
+    // events (ver toEventOrNull).
+    legs = items.mapNotNull { it.toLegOrNull() },
+    events = items.mapNotNull { it.toEventOrNull() }
 )
+
+private fun HistoryItemDto.toEventOrNull(): RouteEvent? {
+    if (status != "event") return null
+    val titleText = title.orEmpty()
+    return RouteEvent(
+        type = classifyRouteEventTitle(titleText),
+        // start.time.timestamp es epoch UTC correcto (verificado: 1794632457 = 00:00:57 en Perú),
+        // no se parsea formatted como en los tramos.
+        time = start?.time?.timestamp?.let(Instant::ofEpochSecond),
+        point = start?.coordinates.toGeoPointOrNull(),
+        title = titleText
+    )
+}
 
 private fun HistoryItemDto.toLegOrNull(): HistoryLeg? {
     val startEndpoint = start.toEndpoint()

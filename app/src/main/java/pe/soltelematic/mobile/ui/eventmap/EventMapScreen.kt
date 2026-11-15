@@ -114,6 +114,7 @@ fun EventMapScreen(
                 // para darle énfasis a este único punto.
                 selectedLegIndex = 0,
                 onMarkerClick = {},
+                onMapClick = {},
                 playbackPoint = null,
                 playbackBearing = 0f,
                 unitIcon = null,

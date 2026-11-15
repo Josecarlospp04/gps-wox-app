@@ -32,6 +32,19 @@
 
     <string name="map_search_placeholder">Buscar unidad, placa o conductor</string>
     <string name="map_search_clear">Limpiar búsqueda</string>
+    <string name="route_info_close">Cerrar</string>
+    <string name="route_info_ignition_on">Motor encendido</string>
+    <string name="route_info_ignition_off">Motor apagado</string>
+    <string name="route_info_stop">Parada</string>
+    <string name="route_info_route_start">Inicio de ruta</string>
+    <string name="route_info_route_end">Fin de ruta</string>
+    <string name="route_info_date">Fecha</string>
+    <string name="route_info_time">Hora</string>
+    <string name="route_info_stop_start">Inicio</string>
+    <string name="route_info_stop_end">Fin</string>
+    <string name="route_info_duration">Duración</string>
+    <string name="route_info_place">Lugar</string>
+    <string name="route_info_address_loading">Obteniendo dirección…</string>
     <string name="today_track_title">Última ruta</string>
     <string name="today_track_title_with_day">%1$s · %2$s</string>
     <string name="today_track_day_today">Hoy</string>

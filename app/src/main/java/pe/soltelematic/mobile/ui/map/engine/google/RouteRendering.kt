@@ -3,6 +3,7 @@ package pe.soltelematic.mobile.ui.map.engine.google
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
@@ -13,6 +14,7 @@ import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.SpeedBand
 import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.ui.map.engine.RouteMarkerRole
+import pe.soltelematic.mobile.ui.map.engine.isEvent
 import pe.soltelematic.mobile.ui.map.engine.RoutePoint
 import pe.soltelematic.mobile.ui.map.engine.RoutePolyline
 import pe.soltelematic.mobile.ui.theme.SoltelematicColors
@@ -57,13 +59,29 @@ private const val MARKER_INNER_DOT_DIAMETER_DP = 6f
 private const val MARKER_SELECTION_RING_WIDTH_DP = 2f
 private const val MARKER_SELECTION_RING_GAP_DP = 2f
 
+// Insignias de partida/llegada ("A"/"B"): más grandes que los pines de parada para no confundirse con
+// los puntos de evento, que son más chicos. La variante seleccionada agrega el anillo en el mismo
+// bitmap, igual que los pines de parada.
+private const val BADGE_DIAMETER_DP = 24
+private const val BADGE_SELECTED_DIAMETER_DP = 32
+private const val BADGE_LETTER_FRACTION = 0.58f
+
+// Puntos de evento (motor encendido/apagado): 14 dp en total, borde blanco incluido. El bitmap mide
+// exactamente eso a propósito -- el área tocable de un marcador de Google es su bitmap, y uno más
+// grande (con margen transparente) taparía el toque de la parada que tiene debajo.
+private const val EVENT_DOT_DIAMETER_DP = 14
+private const val EVENT_DOT_BORDER_DP = 2f
+// Opacidad plena: Color.WHITE como Int de android.graphics.
+private const val EVENT_DOT_BORDER_COLOR = 0xFFFFFFFF.toInt()
+
 /** Colores de marca ya resueltos a Int (android.graphics.Color) -- ver buildRouteMarkerBitmap. */
 internal data class RouteMarkerPalette(
     val statusMoving: Int,
     val onSurface: Int,
     val surface: Int,
     val outline: Int,
-    val primary: Int
+    val primary: Int,
+    val statusAlert: Int
 )
 
 /**
@@ -79,26 +97,29 @@ internal fun buildRouteMarkerIcons(
     palette: RouteMarkerPalette
 ): Map<Pair<RouteMarkerRole, Boolean>, BitmapDescriptor> {
     fun iconFor(role: RouteMarkerRole, selected: Boolean): BitmapDescriptor = when (role) {
-        // Inicio: círculo relleno statusMoving -- mismo verde que "unidad en movimiento" en el
-        // resto de la app (ver StatusPill en SummaryTab.kt).
-        RouteMarkerRole.ROUTE_START -> buildRouteMarkerBitmap(
+        // Partida / llegada: insignias oscuras (ink) con "A" / "B" en el color de superficie. Antes eran un
+        // círculo verde y uno oscuro; el verde y el rojo pasaron a ser de los eventos de motor, así
+        // que la forma (más grande, con letra) es lo que las distingue.
+        RouteMarkerRole.ROUTE_START -> buildBadgeBitmap(
             density = density,
             selected = selected,
-            fillColor = palette.statusMoving,
-            strokeColor = null,
-            innerDotColor = null,
-            selectionRingColor = palette.primary
-        )
-        // Fin: círculo relleno ink -- neutro a propósito, para no competir con el verde de inicio
-        // ni con el ámbar/rojo de otros estados de la unidad.
-        RouteMarkerRole.ROUTE_END -> buildRouteMarkerBitmap(
-            density = density,
-            selected = selected,
+            letter = "A",
             fillColor = palette.onSurface,
-            strokeColor = null,
-            innerDotColor = null,
+            letterColor = palette.surface,
             selectionRingColor = palette.primary
         )
+        RouteMarkerRole.ROUTE_END -> buildBadgeBitmap(
+            density = density,
+            selected = selected,
+            letter = "B",
+            fillColor = palette.onSurface,
+            letterColor = palette.surface,
+            selectionRingColor = palette.primary
+        )
+        // Eventos: punto verde (motor encendido) / rojo (apagado) con borde blanco. Sin variante
+        // seleccionada propia: tocar un evento abre su tarjeta, no lo "selecciona" en la lista.
+        RouteMarkerRole.IGNITION_ON -> buildEventDotBitmap(density, palette.statusMoving)
+        RouteMarkerRole.IGNITION_OFF -> buildEventDotBitmap(density, palette.statusAlert)
         // Parada: círculo surface con borde outline y punto interior ink -- distinto de
         // inicio/fin porque una parada no es un extremo de la ruta.
         RouteMarkerRole.STOP -> buildRouteMarkerBitmap(
@@ -113,6 +134,85 @@ internal fun buildRouteMarkerIcons(
     return RouteMarkerRole.values().flatMap { role ->
         listOf((role to false) to iconFor(role, false), (role to true) to iconFor(role, true))
     }.toMap()
+}
+
+/** Insignia circular con una letra centrada ("A" partida, "B" llegada), con anillo si está seleccionada. */
+private fun buildBadgeBitmap(
+    density: Float,
+    selected: Boolean,
+    letter: String,
+    fillColor: Int,
+    letterColor: Int,
+    selectionRingColor: Int
+): BitmapDescriptor {
+    val diameterDp = if (selected) BADGE_SELECTED_DIAMETER_DP else BADGE_DIAMETER_DP
+    val sizePx = (diameterDp * density).roundToInt()
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = sizePx / 2f
+    val ringWidthPx = MARKER_SELECTION_RING_WIDTH_DP * density
+    val ringGapPx = MARKER_SELECTION_RING_GAP_DP * density
+    val bodyRadius = if (selected) center - ringWidthPx - ringGapPx else center
+
+    if (selected) {
+        canvas.drawCircle(center, center, center - ringWidthPx / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = selectionRingColor
+            style = Paint.Style.STROKE
+            strokeWidth = ringWidthPx
+        })
+    }
+    canvas.drawCircle(center, center, bodyRadius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = fillColor
+        style = Paint.Style.FILL
+    })
+    val letterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = letterColor
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+        textSize = bodyRadius * 2f * BADGE_LETTER_FRACTION
+    }
+    // Centrado vertical por métricas de la fuente (drawText ancla en la línea base).
+    val baseline = center - (letterPaint.fontMetrics.ascent + letterPaint.fontMetrics.descent) / 2f
+    canvas.drawText(letter, center, baseline, letterPaint)
+    return BitmapDescriptorFactory.fromBitmap(bitmap)
+}
+
+/** Punto de evento: círculo de color con borde blanco, 14 dp en total. */
+private fun buildEventDotBitmap(density: Float, fillColor: Int): BitmapDescriptor {
+    val sizePx = (EVENT_DOT_DIAMETER_DP * density).roundToInt()
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = sizePx / 2f
+    canvas.drawCircle(center, center, center, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = EVENT_DOT_BORDER_COLOR
+        style = Paint.Style.FILL
+    })
+    canvas.drawCircle(center, center, center - EVENT_DOT_BORDER_DP * density, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = fillColor
+        style = Paint.Style.FILL
+    })
+    return BitmapDescriptorFactory.fromBitmap(bitmap)
+}
+
+/**
+ * Ancla del icono sobre su coordenada. Un motor apagado/encendido cae casi siempre en el mismo punto
+ * que una parada (y el encendido, también con la insignia "A"): centrados, el punto de 14 dp
+ * quedaría completamente dentro de la parada y taparía su toque. Por eso los eventos se corren hacia
+ * arriba, uno a cada lado: el apagado arriba a la izquierda y el encendido arriba a la derecha (su
+ * esquina inferior va sobre la coordenada). Así evento y parada se ven y se pueden tocar. El resto
+ * de iconos va centrado.
+ */
+internal fun RouteMarkerRole.markerAnchor(): Offset = when (this) {
+    RouteMarkerRole.IGNITION_OFF -> Offset(1f, 1f)
+    RouteMarkerRole.IGNITION_ON -> Offset(0f, 1f)
+    else -> Offset(0.5f, 0.5f)
+}
+
+/** Los eventos van por encima de paradas y partida/llegada; lo seleccionado, justo debajo de ellos. */
+internal fun RouteMarkerRole.markerZIndex(selected: Boolean): Float = when {
+    isEvent -> 1.5f
+    selected -> 1f
+    else -> 0f
 }
 
 /**

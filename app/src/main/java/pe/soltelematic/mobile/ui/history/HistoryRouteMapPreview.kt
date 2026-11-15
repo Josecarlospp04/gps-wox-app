@@ -45,6 +45,7 @@ private fun HistoryRouteMapPreview() {
             markers = mapData.markers,
             selectedLegIndex = 0,
             onMarkerClick = {},
+            onMapClick = {},
             playbackPoint = null,
             playbackBearing = 0f,
             unitIcon = null,

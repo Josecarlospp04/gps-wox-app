@@ -6,6 +6,7 @@ import pe.soltelematic.mobile.domain.model.HistoryLeg
 import pe.soltelematic.mobile.domain.model.HistoryPosition
 import pe.soltelematic.mobile.domain.model.HistoryRoute
 import pe.soltelematic.mobile.domain.model.HistoryStopLeg
+import pe.soltelematic.mobile.domain.model.RouteEventType
 import pe.soltelematic.mobile.ui.map.engine.RouteMarkerData
 import pe.soltelematic.mobile.ui.map.engine.RouteMarkerRole
 import pe.soltelematic.mobile.ui.map.engine.RoutePoint
@@ -78,9 +79,21 @@ fun HistoryRoute.toRouteMapData(): RouteMapData {
         RoutePolyline(legIndex = index, points = leg.positions.map { RoutePoint(it.point, it.speedText.toSpeedKphOrNull()) })
     }
 
+    // Solo los eventos de tipo reconocido (motor encendido/apagado); el resto no se dibuja. Van al final:
+    // los dibuja por encima de paradas y partida/llegada (ver los motores).
+    val eventMarkers = events.withIndex().mapNotNull { (index, event) ->
+        val role = when (event.type) {
+            RouteEventType.IGNITION_ON -> RouteMarkerRole.IGNITION_ON
+            RouteEventType.IGNITION_OFF -> RouteMarkerRole.IGNITION_OFF
+            RouteEventType.OTHER -> return@mapNotNull null
+        }
+        val point = event.point ?: return@mapNotNull null
+        RouteMarkerData(legIndex = null, position = point, role = role, eventIndex = index)
+    }
+
     return RouteMapData(
         polylines = polylines,
-        markers = stopMarkers + listOfNotNull(startMarker, endMarker)
+        markers = stopMarkers + listOfNotNull(startMarker, endMarker) + eventMarkers
     )
 }
 

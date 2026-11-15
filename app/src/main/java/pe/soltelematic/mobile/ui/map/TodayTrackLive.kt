@@ -81,6 +81,7 @@ fun TodayTrackState.withRefreshedRoute(newRoute: HistoryRoute, newMapData: Route
             else -> newMapData
         },
         provisional = keptProvisional,
+        infoCard = if (newStatus == TodayTrackStatus.READY) infoCard else null,
         selectedLegIndex = selectedLegIndex?.takeIf { sameLeg(route, newRoute, it) },
         addresses = addresses.filterKeys { sameLeg(route, newRoute, it) },
         panelExpanded = panelExpanded && newStatus == TodayTrackStatus.READY

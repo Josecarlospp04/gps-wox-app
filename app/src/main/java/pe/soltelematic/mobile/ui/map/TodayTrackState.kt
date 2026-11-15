@@ -4,6 +4,7 @@ import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.HistoryRoute
 import pe.soltelematic.mobile.ui.history.AddressResolution
 import pe.soltelematic.mobile.ui.history.CameraTarget
+import pe.soltelematic.mobile.ui.history.InfoCardState
 import pe.soltelematic.mobile.ui.history.RouteMapData
 import pe.soltelematic.mobile.ui.history.cameraTargetFor
 import pe.soltelematic.mobile.ui.map.engine.MapMarkerData
@@ -43,7 +44,9 @@ data class TodayTrackState(
     val dayDate: LocalDate = LocalDate.now(),
     // true si el día se cargó cuando ya había terminado (día pasado, datos completos): no caduca.
     // false = se cargó siendo hoy, así que al cruzar la medianoche hay que volver a buscar.
-    val dayComplete: Boolean = false
+    val dayComplete: Boolean = false,
+    // Tarjeta de información del icono tocado (parada, partida/llegada o evento); null = cerrada.
+    val infoCard: InfoCardState? = null
 )
 
 /** Solo se despliega la lista cuando hay recorrido (READY); plegar siempre es posible. */
@@ -56,7 +59,8 @@ fun TodayTrackState.withPanelExpanded(expanded: Boolean): TodayTrackState =
  */
 fun TodayTrackState.withLegSelected(legIndex: Int): TodayTrackState {
     if (route?.legs?.getOrNull(legIndex) == null) return this
-    return copy(selectedLegIndex = legIndex, panelExpanded = false, legFocusRequestId = legFocusRequestId + 1)
+    // La tarjeta se cierra: el tramo elegido en la lista es otro foco.
+    return copy(selectedLegIndex = legIndex, panelExpanded = false, legFocusRequestId = legFocusRequestId + 1, infoCard = null)
 }
 
 /**

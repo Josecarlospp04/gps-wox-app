@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import pe.soltelematic.mobile.ui.map.engine.RouteMarkerKey
+import pe.soltelematic.mobile.ui.map.engine.RouteMarkerTarget
+import pe.soltelematic.mobile.ui.map.engine.target
 import pe.soltelematic.mobile.core.result.ApiResult
 import pe.soltelematic.mobile.core.storage.UserPreferencesDataStore
 import pe.soltelematic.mobile.domain.model.GeoPoint
@@ -117,8 +120,53 @@ class HistoryViewModel(
         _uiState.update { it.copy(isLoading = false) }
     }
 
+    /** Fila de la línea de tiempo tocada: selecciona el tramo y cierra la tarjeta de información. */
     fun onLegSelected(legIndex: Int) {
-        _uiState.update { it.copy(selectedLegIndex = legIndex) }
+        _uiState.update { it.copy(selectedLegIndex = legIndex, infoCard = null) }
+    }
+
+    /**
+     * Toque en un icono del mapa: paradas y partida/llegada seleccionan su tramo (como siempre) y TODOS
+     * abren su tarjeta; un evento no es un tramo, solo abre la tarjeta.
+     */
+    fun onMarkerTapped(key: RouteMarkerKey) {
+        val route = _uiState.value.route ?: return
+        val data = route.infoCardFor(key) ?: return
+        val point = data.point
+        val address = when {
+            point == null -> AddressResolution.Resolved(null)
+            addressCache.containsKey(point) -> AddressResolution.Resolved(addressCache.getValue(point))
+            else -> AddressResolution.Loading
+        }
+        val leg = (key.target() as? RouteMarkerTarget.Leg)?.legIndex
+        _uiState.update {
+            it.copy(
+                selectedLegIndex = leg ?: it.selectedLegIndex,
+                infoCard = InfoCardState(key, data, address)
+            )
+        }
+        if (address !is AddressResolution.Loading || point == null) return
+        viewModelScope.launch {
+            val resolved = when (val result = assetDetailRepository.getAddress(point.lat, point.lng)) {
+                is ApiResult.Success -> result.data
+                is ApiResult.Error -> null
+            }
+            addressCache[point] = resolved
+            // Descarta la respuesta si la tarjeta ya es otra o se cerró.
+            _uiState.update { state ->
+                val card = state.infoCard
+                if (card != null && card.key == key && card.data.point == point) {
+                    state.copy(infoCard = card.copy(address = AddressResolution.Resolved(resolved)))
+                } else {
+                    state
+                }
+            }
+        }
+    }
+
+    /** Botón de cerrar de la tarjeta, o toque en el mapa vacío. */
+    fun onInfoCardDismissed() {
+        _uiState.update { if (it.infoCard == null) it else it.copy(infoCard = null) }
     }
 
     /** Hoy / Ayer / 7 días: rango ya resuelto, solo hace falta recargar con él. */
@@ -128,6 +176,7 @@ class HistoryViewModel(
             it.copy(
                 dateRange = range,
                 selectedLegIndex = null,
+                infoCard = null,
                 addresses = emptyMap(),
                 playback = HistoryPlaybackState()
             )
@@ -277,6 +326,7 @@ class HistoryViewModel(
                             isLoading = false,
                             route = result.data,
                             mapData = result.data.toRouteMapData(),
+                            infoCard = null,
                             playbackPoints = points,
                             playbackBearings = points.toBearings()
                         )

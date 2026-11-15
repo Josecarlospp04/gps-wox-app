@@ -147,6 +147,10 @@ interface MapEngine {
         // valor por defecto, mismo motivo que draft. Los marcadores de parada nunca abren popup ni
         // reportan toques.
         route: RouteOverlay?,
+        // Toque en un marcador de la ruta (parada, partida/llegada o evento): la pantalla abre su
+        // tarjeta de información. No afecta a los marcadores de unidad (onMarkerClick). Sin valor por
+        // defecto, mismo motivo que draft.
+        onRouteMarkerClick: (RouteMarkerKey) -> Unit,
         // El usuario empezó a mover la cámara con un gesto (arrastrar, pellizcar, rotar, inclinar).
         // Las animaciones propias de la app (frame/centerOn/followTo/fitAll) NO lo disparan. Una
         // vez por gesto, no por frame. Sin valor por defecto, mismo motivo que draft.

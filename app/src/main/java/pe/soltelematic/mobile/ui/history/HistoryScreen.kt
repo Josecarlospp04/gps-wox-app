@@ -49,7 +49,9 @@ import pe.soltelematic.mobile.domain.model.AssetIcon
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.HistoryRoute
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.ui.map.RouteInfoCard
 import pe.soltelematic.mobile.ui.map.engine.RouteMapEngine
+import pe.soltelematic.mobile.ui.map.engine.RouteMarkerKey
 import pe.soltelematic.mobile.ui.theme.LocalSoltelematicColors
 import pe.soltelematic.mobile.ui.theme.SoltelematicMinTouchTarget
 import pe.soltelematic.mobile.ui.theme.SoltelematicShapes
@@ -166,6 +168,9 @@ fun HistoryScreen(
                     selectedLegIndex = uiState.selectedLegIndex,
                     addresses = uiState.addresses,
                     onLegSelected = viewModel::onLegSelected,
+                    infoCard = uiState.infoCard,
+                    onMarkerTapped = viewModel::onMarkerTapped,
+                    onInfoCardDismissed = viewModel::onInfoCardDismissed,
                     onStopRowVisible = viewModel::onStopRowVisible,
                     playbackPoints = uiState.playbackPoints,
                     playbackBearings = uiState.playbackBearings,
@@ -312,6 +317,9 @@ private fun HistoryContent(
     selectedLegIndex: Int?,
     addresses: Map<Int, AddressResolution>,
     onLegSelected: (Int) -> Unit,
+    infoCard: InfoCardState?,
+    onMarkerTapped: (RouteMarkerKey) -> Unit,
+    onInfoCardDismissed: () -> Unit,
     onStopRowVisible: (Int, GeoPoint) -> Unit,
     playbackPoints: List<HistoryPlaybackPoint>,
     playbackBearings: List<Float>,
@@ -363,15 +371,21 @@ private fun HistoryContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        routeMapEngine.Content(
+        // La tarjeta de información va dentro del área del mapa, abajo: queda justo encima de la línea
+        // de tiempo.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.45f),
+                .weight(0.45f)
+        ) {
+        routeMapEngine.Content(
+            modifier = Modifier.fillMaxSize(),
             cameraController = cameraController,
             polylines = mapData?.polylines ?: emptyList(),
             markers = mapData?.markers ?: emptyList(),
             selectedLegIndex = selectedLegIndex,
-            onMarkerClick = onLegSelected,
+            onMarkerClick = onMarkerTapped,
+            onMapClick = onInfoCardDismissed,
             playbackPoint = playbackPoints.getOrNull(playback.currentIndex)?.position?.point,
             playbackBearing = playbackBearings.getOrNull(playback.currentIndex) ?: 0f,
             unitIcon = unitIcon,
@@ -379,6 +393,17 @@ private fun HistoryContent(
             mapType = mapType,
             speedRanges = speedRanges
         )
+        infoCard?.let { card ->
+            RouteInfoCard(
+                card = card,
+                onClose = onInfoCardDismissed,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(SoltelematicSpacing.sm)
+            )
+        }
+        }
         HistoryTimeline(
             legs = route.legs,
             periodStats = route.periodStats,

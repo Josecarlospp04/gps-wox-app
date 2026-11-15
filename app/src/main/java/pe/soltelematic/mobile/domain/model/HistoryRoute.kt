@@ -5,12 +5,15 @@ import java.time.Instant
 /**
  * Ruta de un rango de fechas (Sprint 2B), resultado de GET history. legs viene en el mismo orden
  * cronológico en que lo entrega el servidor -- alterna HistoryStopLeg/HistoryDriveLeg, y ya viene
- * filtrado: los items status="event" (end/stats/positions en null, de la pantalla de Alertas) se
- * descartan en el mapper, no llegan a este modelo.
+ * separado de los eventos: los items status="event" (end/stats/positions en null) van a [events],
+ * no a legs.
  */
 data class HistoryRoute(
     val periodStats: List<UnitStat>,
-    val legs: List<HistoryLeg>
+    val legs: List<HistoryLeg>,
+    // Eventos de la plataforma del mismo rango (status="event" de GET history), en el orden del
+    // servidor. Todos; el mapa solo dibuja los de tipo reconocido (ver RouteEventType).
+    val events: List<RouteEvent> = emptyList()
 )
 
 data class HistoryEndpoint(

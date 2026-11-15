@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -59,6 +60,7 @@ import pe.soltelematic.mobile.ui.map.engine.MapCameraController
 import pe.soltelematic.mobile.ui.map.engine.MapEngine
 import pe.soltelematic.mobile.ui.map.engine.MapMarkerData
 import pe.soltelematic.mobile.ui.map.engine.MapTailData
+import pe.soltelematic.mobile.ui.map.engine.RouteMarkerKey
 import pe.soltelematic.mobile.ui.map.engine.RouteOverlay
 import pe.soltelematic.mobile.ui.theme.LocalSoltelematicColors
 import com.google.maps.android.compose.MapType as GoogleMapType
@@ -138,6 +140,7 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
         draft: GeofenceDraftPreview?,
         tail: MapTailData?,
         route: RouteOverlay?,
+        onRouteMarkerClick: (RouteMarkerKey) -> Unit,
         onCameraGesture: () -> Unit
     ) {
         // Casteo seguro: el único MapCameraController que existe hoy es el que devuelve
@@ -164,8 +167,12 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
         val routeStatusMovingArgb = LocalSoltelematicColors.current.statusMoving.toArgb()
         val routeOnSurfaceArgb = MaterialTheme.colorScheme.onSurface.toArgb()
         val routeOutlineArgb = MaterialTheme.colorScheme.outline.toArgb()
+        val routeStatusAlertArgb = LocalSoltelematicColors.current.statusAlert.toArgb()
+        // El listener de toques se instala una sola vez (ver MapEffect de abajo): leer el callback
+        // actual por State, no capturar el de la primera composición.
+        val currentOnRouteMarkerClick by rememberUpdatedState(onRouteMarkerClick)
         val hasRoute = route != null
-        val routeMarkerIcons = remember(hasRoute, routeDensity, routeStatusMovingArgb, routeOnSurfaceArgb, pillSurfaceArgb, routeOutlineArgb, draftPreviewColor) {
+        val routeMarkerIcons = remember(hasRoute, routeDensity, routeStatusMovingArgb, routeOnSurfaceArgb, pillSurfaceArgb, routeOutlineArgb, draftPreviewColor, routeStatusAlertArgb) {
             if (!hasRoute) {
                 emptyMap()
             } else {
@@ -176,7 +183,8 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
                         onSurface = routeOnSurfaceArgb,
                         surface = pillSurfaceArgb,
                         outline = routeOutlineArgb,
-                        primary = draftPreviewColor.toArgb()
+                        primary = draftPreviewColor.toArgb(),
+                        statusAlert = routeStatusAlertArgb
                     )
                 )
             }
@@ -324,12 +332,21 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
                 )
             }
             route?.markers?.forEach { marker ->
-                val isSelected = marker.legIndex == routeSelectedLeg
-                MarkerComposable(
-                    state = rememberMarkerState(position = marker.position.toLatLng()),
-                    icon = routeMarkerIcons.getValue(marker.role to isSelected),
-                    onClick = { true }
-                )
+                key(marker.key, marker.position) {
+                    // Los eventos tienen legIndex null (ver GoogleRouteMapEngine).
+                    val isSelected = marker.legIndex != null && marker.legIndex == routeSelectedLeg
+                    // tag = la clave: RouteTapMarkerManager identifica así los marcadores de ruta (el
+                    // onClick de maps-compose no se usa: su listener lo pisa el del MarkerManager).
+                    MarkerComposable(
+                        state = rememberMarkerState(position = marker.position.toLatLng()),
+                        icon = routeMarkerIcons.getValue(marker.role to isSelected),
+                        anchor = marker.role.markerAnchor(),
+                        zIndex = marker.role.markerZIndex(isSelected),
+                        tag = marker.key,
+                        onClick = { true }
+                    )
+
+                }
             }
 
             // Se dispara con cada refresco de Room (nueva lista de markers), nunca con cada
@@ -339,22 +356,20 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
 
             MapEffect(markers) { googleMap ->
                 val manager = clusteringState.manager ?: run {
-                    val newManager = ClusterManager<AssetClusterItem>(context, googleMap)
+                    // El MarkerManager de ClusterManager es el DUEÑO del listener de marcadores del mapa: su
+                    // constructor encola (Handler del hilo principal) un setOnMarkerClickListener(this) que
+                    // corre DESPUÉS de este bloque y pisa cualquier listener que se instale aquí con
+                    // googleMap.setOnMarkerClickListener -- por eso los toques de ruta nunca llegaban a uno
+                    // propio. Se le da un MarkerManager propio, que atiende los marcadores de ruta (por tag) y
+                    // delega todo lo demás (unidades, clusters) al comportamiento de siempre.
+                    val newManager = ClusterManager<AssetClusterItem>(
+                        context,
+                        googleMap,
+                        RouteTapMarkerManager(googleMap) { key -> currentOnRouteMarkerClick(key) }
+                    )
                     val renderer = AssetClusterRenderer(context, googleMap, newManager, iconCache)
                     newManager.renderer = renderer
                     clusteringState.renderer = renderer
-                    // El anillo no está en ninguna colección del manager y MarkerOptions de este SDK no
-                    // permite marcarlo no clicable: sin este filtro su toque caería al comportamiento
-                    // por defecto de Google (centrar la cámara, info window). Se consume y, como tapa
-                    // la píldora de su unidad, equivale a tocar esa unidad (vuelve a enfocarla).
-                    googleMap.setOnMarkerClickListener { marker ->
-                        if (marker == clusteringState.selectionRing) {
-                            clusteringState.selectedId?.let(onMarkerClick)
-                            true
-                        } else {
-                            newManager.onMarkerClick(marker)
-                        }
-                    }
                     // El anillo comparte posición con el marcador que el renderer acaba de colocar,
                     // no solo con el dato: nunca se separan aunque el renderer lo ubique distinto.
                     renderer.onItemMarkerPlaced = { item, marker ->

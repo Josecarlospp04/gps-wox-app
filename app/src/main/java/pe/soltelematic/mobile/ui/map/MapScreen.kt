@@ -216,9 +216,16 @@ fun MapScreen(
     // Parte de la hoja que cae sobre el mapa (0 sin hoja). El padding del SDK además deja el logo
     // de Google por encima de la hoja.
     val sheetOverlapPx = sheetTopPx?.let { top -> (mapBottomPx - top).toInt().coerceAtLeast(0) } ?: 0
-    val mapContentPadding = remember(topOverlayHeightPx, fabColumnWidthPx, sheetOverlapPx, density) {
+    // Alto de la tarjeta de información de un icono de ruta (0 sin tarjeta): se suma al padding inferior
+    // del mapa para que el icono tocado se centre en la zona que la tarjeta NO tapa.
+    var infoCardHeightPx by remember { mutableIntStateOf(0) }
+    val mapContentPadding = remember(topOverlayHeightPx, fabColumnWidthPx, sheetOverlapPx, infoCardHeightPx, density) {
         with(density) {
-            PaddingValues(top = topOverlayHeightPx.toDp(), end = fabColumnWidthPx.toDp(), bottom = sheetOverlapPx.toDp())
+            PaddingValues(
+                top = topOverlayHeightPx.toDp(),
+                end = fabColumnWidthPx.toDp(),
+                bottom = (sheetOverlapPx + infoCardHeightPx).toDp()
+            )
         }
     }
 
@@ -275,6 +282,22 @@ fun MapScreen(
         val track = viewModel.uiState.value.todayTrack ?: return@LaunchedEffect
         if (track.assetId != trackedAssetId || track.legFocusRequestId != legFocusId) return@LaunchedEffect
         track.selectedLegFramePoints()?.let(cameraController::frame)
+    }
+
+    // Icono de ruta tocado (parada, partida/llegada o evento): el motor ya NO deja que el SDK centre la
+    // cámara por su cuenta (ver RouteTapMarkerManager); se centra aquí, conservando el zoom, dentro de
+    // la zona libre: se espera a que la tarjeta esté medida y su alto aplicado al padding del mapa, y
+    // solo entonces se mueve la cámara, así el icono queda por encima de la tarjeta. Una vez por icono
+    // tocado (llave = su clave), no cada vez que llega su dirección.
+    val infoCardKey = todayTrack?.infoCard?.key
+    LaunchedEffect(trackedAssetId, infoCardKey) {
+        if (trackedAssetId == null || infoCardKey == null) return@LaunchedEffect
+        withTimeoutOrNull(1000) { snapshotFlow { infoCardHeightPx }.first { it > 0 } }
+        withFrameNanos { }
+        withFrameNanos { }
+        val card = viewModel.uiState.value.todayTrack?.infoCard ?: return@LaunchedEffect
+        if (card.key != infoCardKey) return@LaunchedEffect
+        card.data.point?.let(cameraController::followTo)
     }
 
     // Tocar la unidad seguida: centra la cámara en ella conservando el zoom actual.
@@ -416,8 +439,9 @@ fun MapScreen(
                     viewModel.onGeofenceMapTapped(point)
                 } else {
                     suggestionsVisible = false
-                    // En el modo no hay hoja ni enfoque que cerrar: tocar el mapa vacío no sale.
-                    if (!isTracking) viewModel.onBottomSheetDismissed()
+                    // En el modo no hay hoja ni enfoque que cerrar: tocar el mapa vacío no sale, solo
+                    // cierra la tarjeta de información si hay una abierta.
+                    if (isTracking) viewModel.onInfoCardDismissed() else viewModel.onBottomSheetDismissed()
                 }
             },
             contentPadding = mapContentPadding,
@@ -431,6 +455,7 @@ fun MapScreen(
             },
             tail = tailData,
             route = routeOverlay,
+            onRouteMarkerClick = viewModel::onRouteMarkerTapped,
             onCameraGesture = viewModel::onCameraGesture
         )
 
@@ -520,17 +545,37 @@ fun MapScreen(
         }
 
         // Panel del modo: su borde superior (ya asentado) entra en sheetTopPx -> padding del mapa.
+        // La tarjeta de información va en la misma columna, justo encima del panel: sigue su altura (plegado
+        // o desplegado) sin medir nada, y no cuenta para el padding del mapa (el panel reporta su propio
+        // borde superior).
         if (todayTrack != null && !isDrawingGeofence) {
-            TodayTrackPanel(
-                track = todayTrack,
-                onExpandedChange = viewModel::onTodayPanelExpandedChange,
-                onLegClick = viewModel::onTodayLegSelected,
-                onStopRowVisible = viewModel::onTodayStopRowVisible,
-                onRetry = viewModel::onTodayTrackRetry,
-                onOpenHistory = { onOpenHistory(todayTrack.assetId, todayTrack.dayDate) },
-                onSheetTopChanged = { sheetTopPx = it },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
+            Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+                val card = todayTrack.infoCard
+                if (card != null) {
+                    RouteInfoCard(
+                        card = card,
+                        onClose = viewModel::onInfoCardDismissed,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SoltelematicSpacing.lg)
+                            .padding(bottom = SoltelematicSpacing.sm)
+                            // Alto real (con su margen inferior): reserva el espacio en el mapa.
+                            .onSizeChanged { infoCardHeightPx = it.height }
+                    )
+                } else if (infoCardHeightPx != 0) {
+                    // Sin tarjeta no hay nada que reservar.
+                    SideEffect { infoCardHeightPx = 0 }
+                }
+                TodayTrackPanel(
+                    track = todayTrack,
+                    onExpandedChange = viewModel::onTodayPanelExpandedChange,
+                    onLegClick = viewModel::onTodayLegSelected,
+                    onStopRowVisible = viewModel::onTodayStopRowVisible,
+                    onRetry = viewModel::onTodayTrackRetry,
+                    onOpenHistory = { onOpenHistory(todayTrack.assetId, todayTrack.dayDate) },
+                    onSheetTopChanged = { sheetTopPx = it }
+                )
+            }
         }
 
         // En el modo, los FAB suben con el panel plegado y se ocultan con el panel desplegado (una

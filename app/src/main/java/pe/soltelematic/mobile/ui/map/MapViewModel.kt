@@ -45,6 +45,9 @@ import pe.soltelematic.mobile.domain.repository.AssetDetailRepository
 import pe.soltelematic.mobile.domain.repository.AssetRepository
 import pe.soltelematic.mobile.domain.repository.GeofencesRepository
 import pe.soltelematic.mobile.ui.history.AddressResolution
+import pe.soltelematic.mobile.ui.history.InfoCardState
+import pe.soltelematic.mobile.ui.history.infoCardFor
+import pe.soltelematic.mobile.ui.map.engine.RouteMarkerKey
 import pe.soltelematic.mobile.ui.history.toRouteMapData
 import java.time.Instant
 import java.time.LocalDate
@@ -485,6 +488,43 @@ class MapViewModel(
         }
     }
 
+    /**
+     * Toque en un icono de la ruta (parada, partida/llegada o evento): abre su tarjeta de información.
+     * No selecciona ningún tramo (en el mapa principal tocar una parada no lo hacía; la cámara la centra
+     * el propio SDK, ver GoogleMapEngine).
+     */
+    fun onRouteMarkerTapped(key: RouteMarkerKey) {
+        val track = _uiState.value.todayTrack ?: return
+        val data = track.route?.infoCardFor(key) ?: return
+        val point = data.point
+        val address = when {
+            point == null -> AddressResolution.Resolved(null)
+            addressCache.containsKey(point) -> AddressResolution.Resolved(addressCache.getValue(point))
+            else -> AddressResolution.Loading
+        }
+        updateTrack { it.copy(infoCard = InfoCardState(key, data, address)) }
+        if (address !is AddressResolution.Loading || point == null) return
+        viewModelScope.launch {
+            val resolved = when (val result = assetDetailRepository.getAddress(point.lat, point.lng)) {
+                is ApiResult.Success -> result.data
+                is ApiResult.Error -> null
+            }
+            addressCache[point] = resolved
+            // Descarta la respuesta si la tarjeta ya es otra o se cerró.
+            updateTrack { current ->
+                val card = current.infoCard
+                if (card != null && card.key == key && card.data.point == point) {
+                    current.copy(infoCard = card.copy(address = AddressResolution.Resolved(resolved)))
+                } else {
+                    current
+                }
+            }
+        }
+    }
+
+    /** Botón de cerrar de la tarjeta, o toque en el mapa vacío (no sale del modo). */
+    fun onInfoCardDismissed() = updateTrack { if (it.infoCard == null) it else it.copy(infoCard = null) }
+
     /** "Ajustar zoom" dentro del modo: vuelve a encuadrar el recorrido completo. */
     fun onTrackReframe() {
         _uiState.update { state ->
@@ -682,6 +722,7 @@ class MapViewModel(
                                 selectedLegIndex = null,
                                 addresses = emptyMap(),
                                 provisional = emptyList(),
+                                infoCard = null,
                                 dayDate = result.day,
                                 dayComplete = result.day.isBefore(today),
                                 frameRequestId = track.frameRequestId + 1
@@ -701,6 +742,7 @@ class MapViewModel(
                             selectedLegIndex = null,
                             addresses = emptyMap(),
                             provisional = emptyList(),
+                            infoCard = null,
                             dayDate = today,
                             dayComplete = false,
                             frameRequestId = track.frameRequestId + 1

@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -41,6 +42,7 @@ import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.ui.map.engine.MapCameraController
 import pe.soltelematic.mobile.ui.map.engine.RouteMapEngine
 import pe.soltelematic.mobile.ui.map.engine.RouteMarkerData
+import pe.soltelematic.mobile.ui.map.engine.RouteMarkerKey
 import pe.soltelematic.mobile.ui.map.engine.RoutePolyline
 import pe.soltelematic.mobile.ui.theme.LocalSoltelematicColors
 
@@ -99,7 +101,8 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
         polylines: List<RoutePolyline>,
         markers: List<RouteMarkerData>,
         selectedLegIndex: Int?,
-        onMarkerClick: (Int) -> Unit,
+        onMarkerClick: (RouteMarkerKey) -> Unit,
+        onMapClick: () -> Unit,
         playbackPoint: GeoPoint?,
         playbackBearing: Float,
         unitIcon: AssetIcon?,
@@ -117,7 +120,8 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
         val surfaceArgb = MaterialTheme.colorScheme.surface.toArgb()
         val outlineArgb = MaterialTheme.colorScheme.outline.toArgb()
         val primaryArgb = MaterialTheme.colorScheme.primary.toArgb()
-        val markerIcons = remember(density, statusMovingArgb, onSurfaceArgb, surfaceArgb, outlineArgb, primaryArgb) {
+        val statusAlertArgb = LocalSoltelematicColors.current.statusAlert.toArgb()
+        val markerIcons = remember(density, statusMovingArgb, onSurfaceArgb, surfaceArgb, outlineArgb, primaryArgb, statusAlertArgb) {
             buildRouteMarkerIcons(
                 density = density,
                 palette = RouteMarkerPalette(
@@ -125,7 +129,8 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
                     onSurface = onSurfaceArgb,
                     surface = surfaceArgb,
                     outline = outlineArgb,
-                    primary = primaryArgb
+                    primary = primaryArgb,
+                    statusAlert = statusAlertArgb
                 )
             )
         }
@@ -184,7 +189,8 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
             modifier = modifier,
             cameraPositionState = googleController.cameraPositionState,
             properties = MapProperties(mapType = mapType.toGoogleMapType()),
-            uiSettings = MapUiSettings(zoomControlsEnabled = false, mapToolbarEnabled = false)
+            uiSettings = MapUiSettings(zoomControlsEnabled = false, mapToolbarEnabled = false),
+            onMapClick = { onMapClick() }
         ) {
             // Tramo seleccionado aparte, siempre a fidelidad completa (nunca pasa por el
             // presupuesto de puntos ni por simplify): es un solo Polyline, no miles, así que no
@@ -211,18 +217,25 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
             }
 
             markers.forEach { marker ->
-                val isSelected = marker.legIndex == selectedLegIndex
-                Marker(
-                    state = rememberMarkerState(position = marker.position.toLatLng()),
-                    icon = markerIcons.getValue(marker.role to isSelected),
-                    zIndex = if (isSelected) 1f else 0f,
-                    // Contrato del engine: nunca popup. onClick consumido (true) evita que el
-                    // SDK abra el InfoWindow por defecto.
-                    onClick = {
-                        onMarkerClick(marker.legIndex)
-                        true
-                    }
-                )
+                // key: cada marcador es su propio grupo -- rememberMarkerState solo lee position al
+                // crearse, y con eventos que aparecen/desaparecen la lista cambia en el medio.
+                key(marker.key, marker.position) {
+                    // Los eventos tienen legIndex null: sin este null-check, "ningún tramo seleccionado"
+                    // (también null) los marcaría como seleccionados.
+                    val isSelected = marker.legIndex != null && marker.legIndex == selectedLegIndex
+                    Marker(
+                        state = rememberMarkerState(position = marker.position.toLatLng()),
+                        icon = markerIcons.getValue(marker.role to isSelected),
+                        anchor = marker.role.markerAnchor(),
+                        zIndex = marker.role.markerZIndex(isSelected),
+                        // Contrato del engine: nunca popup. onClick consumido (true) evita que el
+                        // SDK abra el InfoWindow por defecto.
+                        onClick = {
+                            onMarkerClick(marker.key)
+                            true
+                        }
+                    )
+                }
             }
 
             // MarkerState.position es mutableStateOf (ver maps-compose) -- mutarlo directo mueve

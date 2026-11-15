@@ -30,18 +30,45 @@ data class RoutePoint(val point: GeoPoint, val speedKph: Double?)
  */
 data class RoutePolyline(val legIndex: Int, val points: List<RoutePoint>)
 
-enum class RouteMarkerRole { ROUTE_START, ROUTE_END, STOP }
+/**
+ * ROUTE_START / ROUTE_END: insignias "A" / "B". STOP: parada. IGNITION_ON / IGNITION_OFF: puntos verde
+ * y rojo de los eventos de motor encendido / apagado (ver RouteEvent).
+ */
+enum class RouteMarkerRole { ROUTE_START, ROUTE_END, STOP, IGNITION_ON, IGNITION_OFF }
+
+val RouteMarkerRole.isEvent: Boolean
+    get() = this == RouteMarkerRole.IGNITION_ON || this == RouteMarkerRole.IGNITION_OFF
+
+/**
+ * Clave propia de un marcador, la que se reporta al tocarlo: el rol y de dónde sale -- legIndex (tramo
+ * de HistoryRoute.legs) para paradas y partida/llegada, eventIndex (HistoryRoute.events) para eventos.
+ */
+data class RouteMarkerKey(val role: RouteMarkerRole, val legIndex: Int?, val eventIndex: Int?)
+
+/** A qué lleva tocar un marcador: seleccionar un tramo o abrir un evento. */
+sealed interface RouteMarkerTarget {
+    data class Leg(val legIndex: Int) : RouteMarkerTarget
+    data class Event(val eventIndex: Int) : RouteMarkerTarget
+}
+
+/** Enrutado del toque por tipo de marcador; null si la clave está incompleta. */
+fun RouteMarkerKey.target(): RouteMarkerTarget? =
+    if (role.isEvent) eventIndex?.let { RouteMarkerTarget.Event(it) } else legIndex?.let { RouteMarkerTarget.Leg(it) }
 
 /**
  * legIndex referencia la posición del tramo (HistoryRoute.legs) que este marcador representa --
  * es lo que permite el vínculo bidireccional con la línea de tiempo (Bloque 3/4): tocar el
- * marcador selecciona esa fila, seleccionar la fila resalta este marcador.
+ * marcador selecciona esa fila, seleccionar la fila resalta este marcador. Es null en los eventos,
+ * que no son un tramo: ellos llevan eventIndex (posición en HistoryRoute.events).
  */
 data class RouteMarkerData(
-    val legIndex: Int,
+    val legIndex: Int?,
     val position: GeoPoint,
-    val role: RouteMarkerRole
-)
+    val role: RouteMarkerRole,
+    val eventIndex: Int? = null
+) {
+    val key: RouteMarkerKey get() = RouteMarkerKey(role, legIndex, eventIndex)
+}
 
 interface RouteMapEngine {
 
@@ -55,9 +82,12 @@ interface RouteMapEngine {
         polylines: List<RoutePolyline>,
         markers: List<RouteMarkerData>,
         selectedLegIndex: Int?,
-        // Contrato: nunca abrir un InfoWindow/popup -- esos datos ya están en la línea de tiempo
-        // (ver plan del Sprint 2B). El único efecto de tocar un marcador es reportar legIndex.
-        onMarkerClick: (Int) -> Unit,
+        // Contrato: nunca abrir un InfoWindow/popup del SDK. El único efecto de tocar un marcador es
+        // reportar su clave (la tarjeta de información la dibuja la pantalla, no el motor).
+        onMarkerClick: (RouteMarkerKey) -> Unit,
+        // Toque en el mapa fuera de cualquier marcador (cierra la tarjeta de información). Sin valor
+        // por defecto, mismo motivo que playbackPoint.
+        onMapClick: () -> Unit,
         // Posición actual del marcador de reproducción (ver HistoryViewModel.playback), null si no
         // hay reproducción en curso -- la ruta completa (polylines de arriba) se sigue dibujando
         // igual, este marcador solo se superpone encima, nunca la reemplaza ni la dibuja de a poco.

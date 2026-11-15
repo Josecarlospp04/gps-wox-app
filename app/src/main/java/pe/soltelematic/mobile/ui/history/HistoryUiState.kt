@@ -40,7 +40,9 @@ data class HistoryUiState(
     // emita al menos una vez, o si la unidad no aparece ahí -- el engine lo trata igual que "sin
     // icono propio" (caso C).
     val unitIcon: AssetIcon? = null,
-    val playback: HistoryPlaybackState = HistoryPlaybackState()
+    val playback: HistoryPlaybackState = HistoryPlaybackState(),
+    // Tarjeta de información del icono tocado (parada, partida/llegada o evento); null = cerrada.
+    val infoCard: InfoCardState? = null
 )
 
 sealed interface AddressResolution {
