@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import coil.ImageLoader
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.HistoryDriveLeg
 import pe.soltelematic.mobile.domain.model.HistoryEndpoint
@@ -48,7 +49,8 @@ private fun HistoryRouteMapPreview() {
             playbackBearing = 0f,
             unitIcon = null,
             onCameraGesture = {},
-            mapType = MapType.NORMAL
+            mapType = MapType.NORMAL,
+            speedRanges = SpeedRanges.DEFAULT
         )
     }
 }

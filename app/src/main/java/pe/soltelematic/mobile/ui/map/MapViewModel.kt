@@ -27,6 +27,7 @@ import pe.soltelematic.mobile.core.network.RealtimePoller
 import pe.soltelematic.mobile.core.network.SocketRealtimeClient
 import pe.soltelematic.mobile.core.network.UnseenEventsPoller
 import pe.soltelematic.mobile.core.result.ApiError
+import pe.soltelematic.mobile.core.format.speedToKph
 import pe.soltelematic.mobile.core.result.ApiResult
 import pe.soltelematic.mobile.core.storage.UserPreferencesDataStore
 import pe.soltelematic.mobile.data.repository.LastRouteResult
@@ -183,6 +184,11 @@ class MapViewModel(
         viewModelScope.launch {
             userPreferences.showTail.collect { enabled ->
                 _uiState.update { it.copy(showTail = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            userPreferences.speedRanges.collect { ranges ->
+                _uiState.update { it.copy(speedRanges = ranges) }
             }
         }
         refresh()
@@ -565,7 +571,8 @@ class MapViewModel(
         // Puntos en vivo solo si el día mostrado es hoy: sobre un día pasado no tienen sentido.
         if (track.dayDate != LocalDate.now()) return
         val position = asset.position ?: return
-        updateTrack { it.withLivePoint(position, asset.lastSeenAt ?: Instant.now()) }
+        val speedKph = speedToKph(asset.speedKph, asset.speedUnit)
+        updateTrack { it.withLivePoint(position, asset.lastSeenAt ?: Instant.now(), speedKph) }
     }
 
     private suspend fun liveLoop(id: Int, refreshFirst: Boolean) {

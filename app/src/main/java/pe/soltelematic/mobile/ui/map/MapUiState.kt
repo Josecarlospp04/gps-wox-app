@@ -1,5 +1,6 @@
 package pe.soltelematic.mobile.ui.map
 
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.domain.model.Asset
 import pe.soltelematic.mobile.domain.model.AssetFilter
 import pe.soltelematic.mobile.domain.model.GeoPoint
@@ -37,6 +38,8 @@ data class MapUiState(
     // Reflejo de UserPreferencesDataStore.showTail, activado por defecto (ver MapViewModel). Apagado:
     // no se dibuja la cola ni se encuadra con ella.
     val showTail: Boolean = true,
+    // Reflejo de UserPreferencesDataStore.speedRanges (límites de color de la línea por velocidad).
+    val speedRanges: SpeedRanges = SpeedRanges.DEFAULT,
     // Distancia/conducción/detenido + dirección de la hoja inferior: no vienen en devices/map
     // (ver Asset), así que llegan después de abrir la hoja (device/{id} history + geocodificación,
     // mismo camino que AssetDetailViewModel) -- la hoja nunca espera a esto para mostrarse.

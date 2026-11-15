@@ -5,11 +5,13 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.domain.model.VolumeUnit
 
 private val Context.userPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
@@ -21,6 +23,9 @@ private val KEY_SHOW_GEOFENCES = booleanPreferencesKey("show_geofences")
 private val KEY_MAP_TYPE = stringPreferencesKey("map_type")
 private val KEY_VOLUME_UNIT = stringPreferencesKey("volume_unit")
 private val KEY_SHOW_TAIL = booleanPreferencesKey("show_tail")
+private val KEY_SPEED_LIMIT_1 = intPreferencesKey("speed_limit_1")
+private val KEY_SPEED_LIMIT_2 = intPreferencesKey("speed_limit_2")
+private val KEY_SPEED_LIMIT_3 = intPreferencesKey("speed_limit_3")
 
 /** Preferencias NO sensibles. Tokens nunca van aquí, esos son de SecureTokenStorage. */
 class UserPreferencesDataStore(private val context: Context) {
@@ -81,6 +86,32 @@ class UserPreferencesDataStore(private val context: Context) {
     suspend fun setShowTail(enabled: Boolean) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[KEY_SHOW_TAIL] = enabled
+        }
+    }
+
+    // Límites de las bandas de color de la línea por velocidad (km/h). Tres claves, siguiendo el patrón
+    // de showGeofences: sin valor guardado, o con un conjunto no válido, se usan los de por defecto
+    // (SpeedRanges.fromStored).
+    val speedRanges: Flow<SpeedRanges> = context.userPreferencesDataStore.data.map { prefs ->
+        SpeedRanges.fromStored(prefs[KEY_SPEED_LIMIT_1], prefs[KEY_SPEED_LIMIT_2], prefs[KEY_SPEED_LIMIT_3])
+    }
+
+    /** Solo guarda límites válidos; uno inválido se ignora (la validación con mensaje vive en Cuenta). */
+    suspend fun setSpeedRanges(ranges: SpeedRanges) {
+        if (!ranges.isValid) return
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs[KEY_SPEED_LIMIT_1] = ranges.first
+            prefs[KEY_SPEED_LIMIT_2] = ranges.second
+            prefs[KEY_SPEED_LIMIT_3] = ranges.third
+        }
+    }
+
+    /** "Restaurar valores por defecto": borra las tres claves. */
+    suspend fun resetSpeedRanges() {
+        context.userPreferencesDataStore.edit { prefs ->
+            prefs.remove(KEY_SPEED_LIMIT_1)
+            prefs.remove(KEY_SPEED_LIMIT_2)
+            prefs.remove(KEY_SPEED_LIMIT_3)
         }
     }
 }

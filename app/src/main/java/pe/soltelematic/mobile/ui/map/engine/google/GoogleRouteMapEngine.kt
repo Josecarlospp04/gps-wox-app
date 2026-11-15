@@ -37,6 +37,7 @@ import kotlin.math.roundToInt
 import pe.soltelematic.mobile.domain.model.AssetIcon
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.ui.map.engine.MapCameraController
 import pe.soltelematic.mobile.ui.map.engine.RouteMapEngine
 import pe.soltelematic.mobile.ui.map.engine.RouteMarkerData
@@ -103,7 +104,8 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
         playbackBearing: Float,
         unitIcon: AssetIcon?,
         onCameraGesture: () -> Unit,
-        mapType: MapType
+        mapType: MapType,
+        speedRanges: SpeedRanges
     ) {
         // Casteo seguro: el único MapCameraController que existe hoy para este contrato es el
         // que devuelve rememberCameraController() de esta misma clase.
@@ -172,9 +174,11 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
         val selectedPolyline = remember(polylines, selectedLegIndex) {
             polylines.firstOrNull { it.legIndex == selectedLegIndex }
         }
-        val renderableRuns = remember(polylines, selectedLegIndex) {
-            polylines.filter { it.legIndex != selectedLegIndex }.toRenderablePolylineRuns()
+        // speedRanges en la clave: cambiar los límites (Cuenta) recolorea sin pedir nada al servidor.
+        val renderableRuns = remember(polylines, selectedLegIndex, speedRanges) {
+            polylines.filter { it.legIndex != selectedLegIndex }.toRenderablePolylineRuns(speedRanges)
         }
+        val routeColors = LocalSoltelematicColors.current
 
         GoogleMap(
             modifier = modifier,
@@ -197,10 +201,10 @@ class GoogleRouteMapEngine(private val imageLoader: ImageLoader) : RouteMapEngin
 
             // El resto del recorrido sí pasa por el presupuesto de puntos + simplify -- acá es
             // donde vivían los miles de Polyline que crasheaban la app.
-            renderableRuns.forEach { (colorHex, points) ->
+            renderableRuns.forEach { (band, points) ->
                 Polyline(
                     points = points,
-                    color = (colorHex ?: DEFAULT_POLYLINE_COLOR).toComposeColor(),
+                    color = band.toRouteColor(routeColors),
                     width = POLYLINE_WIDTH_PX,
                     clickable = false
                 )

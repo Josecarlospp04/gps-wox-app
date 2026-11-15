@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import pe.soltelematic.mobile.domain.model.AssetIcon
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 
 /**
  * Contrato separado de MapEngine (Sprint 1): esa abstracción es específica de clustering de
@@ -14,8 +15,13 @@ import pe.soltelematic.mobile.domain.model.MapType
  * implementación hoy).
  */
 
-/** Un punto del polyline de un "drive". colorHex viene del servidor, calculado según velocidad. */
-data class RoutePoint(val point: GeoPoint, val colorHex: String?)
+/**
+ * Un punto del polyline de un "drive". speedKph es la velocidad del punto (positions[].s, en km/h):
+ * el motor la convierte en banda de color con los SpeedRanges vigentes, así cambiar los límites
+ * recolorea sin recalcular el mapa ni volver a pedir el historial. positions[].c (el color del
+ * servidor) se ignora: siempre llega #0000FF. null = velocidad desconocida (gris neutro).
+ */
+data class RoutePoint(val point: GeoPoint, val speedKph: Double?)
 
 /**
  * legIndex es la posición del tramo "drive" en HistoryRoute.legs -- permite al engine resaltar
@@ -85,6 +91,9 @@ interface RouteMapEngine {
         // mapa en vivo) -- ver HistoryUiState.mapType. Sin valor por defecto, mismo motivo que
         // playbackPoint arriba: un default acá no genera el bridge $default en un miembro
         // @Composable de interfaz.
-        mapType: MapType
+        mapType: MapType,
+        // Límites de las bandas de color de la línea por velocidad (preferencia de Cuenta). Sin valor
+        // por defecto, mismo motivo que playbackPoint.
+        speedRanges: SpeedRanges
     )
 }

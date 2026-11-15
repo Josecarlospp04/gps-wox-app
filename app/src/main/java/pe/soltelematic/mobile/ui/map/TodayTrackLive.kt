@@ -7,6 +7,7 @@ import pe.soltelematic.mobile.domain.model.HistoryRoute
 import pe.soltelematic.mobile.domain.model.HistoryStopLeg
 import pe.soltelematic.mobile.ui.history.RouteMapData
 import pe.soltelematic.mobile.ui.history.distanceMeters
+import pe.soltelematic.mobile.ui.map.engine.RoutePoint
 import java.time.Instant
 import java.time.LocalDate
 
@@ -17,7 +18,7 @@ import java.time.LocalDate
 const val MIN_LIVE_POINT_DISTANCE_METERS = 10.0
 
 /** Posición recibida por el sondeo, aún no cubierta por ninguna respuesta de getTodayRoute. */
-data class ProvisionalPoint(val point: GeoPoint, val time: Instant)
+data class ProvisionalPoint(val point: GeoPoint, val time: Instant, val speedKph: Double? = null)
 
 /** Última hora que cubre el recorrido (fin de cualquier tramo o última posición de un trayecto). */
 fun HistoryRoute.coveredUntil(): Instant? =
@@ -38,7 +39,7 @@ fun HistoryRoute.lastPoint(): GeoPoint? = when (val leg = legs.lastOrNull()) {
  * MIN_LIVE_POINT_DISTANCE_METERS del último punto (el último provisional o, sin ninguno, el final
  * del recorrido). Si no, devuelve el mismo estado.
  */
-fun TodayTrackState.withLivePoint(point: GeoPoint, time: Instant): TodayTrackState {
+fun TodayTrackState.withLivePoint(point: GeoPoint, time: Instant, speedKph: Double? = null): TodayTrackState {
     val current = route ?: return this
     if (status != TodayTrackStatus.READY) return this
     val covered = current.coveredUntil()
@@ -47,7 +48,7 @@ fun TodayTrackState.withLivePoint(point: GeoPoint, time: Instant): TodayTrackSta
     if (last != null && !time.isAfter(last.time)) return this
     val reference = last?.point ?: current.lastPoint() ?: return this
     if (distanceMeters(reference, point) <= MIN_LIVE_POINT_DISTANCE_METERS) return this
-    return copy(provisional = provisional + ProvisionalPoint(point, time))
+    return copy(provisional = provisional + ProvisionalPoint(point, time, speedKph))
 }
 
 /**
@@ -133,4 +134,15 @@ fun TodayTrackState.switchedToToday(todayRoute: HistoryRoute, todayMapData: Rout
         dayDate = today,
         dayComplete = false
     )
+}
+
+/**
+ * Igual que [provisionalPath] pero con la velocidad de cada punto, para colorear el tramo en vivo
+ * por bandas. El ancla (final del recorrido) va con velocidad null: el primer tramo toma el color
+ * de su punto de llegada, como en el resto de la línea.
+ */
+fun TodayTrackState.provisionalRoutePath(): List<RoutePoint> {
+    if (provisional.isEmpty()) return emptyList()
+    val anchor = route?.lastPoint() ?: return emptyList()
+    return listOf(RoutePoint(anchor, null)) + provisional.map { RoutePoint(it.point, it.speedKph) }
 }

@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -113,20 +115,34 @@ fun AccountScreen(
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
+                Spacer(modifier = Modifier.weight(1f))
             } else {
-                ProfileCard(uiState)
-                Spacer(modifier = Modifier.height(SoltelematicSpacing.xl))
-                UnitsSection(
-                    volumeUnit = uiState.volumeUnit,
-                    onVolumeUnitSelected = viewModel::onVolumeUnitSelected,
-                    showTail = uiState.showTail,
-                    onShowTailChanged = viewModel::onShowTailChanged
-                )
-                Spacer(modifier = Modifier.height(SoltelematicSpacing.xl))
-                SupportSection()
+                // El contenido se desplaza (con la sección de colores ya no cabe en pantallas
+                // chicas); "Acerca de" y "Cerrar sesión" quedan fijos abajo.
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    ProfileCard(uiState)
+                    Spacer(modifier = Modifier.height(SoltelematicSpacing.xl))
+                    UnitsSection(
+                        volumeUnit = uiState.volumeUnit,
+                        onVolumeUnitSelected = viewModel::onVolumeUnitSelected,
+                        showTail = uiState.showTail,
+                        onShowTailChanged = viewModel::onShowTailChanged
+                    )
+                    Spacer(modifier = Modifier.height(SoltelematicSpacing.xl))
+                    SpeedColorsSection(
+                        state = uiState,
+                        onLimitChanged = viewModel::onSpeedLimitChanged,
+                        onSave = viewModel::onSpeedLimitsSave,
+                        onReset = viewModel::onSpeedLimitsReset
+                    )
+                    Spacer(modifier = Modifier.height(SoltelematicSpacing.xl))
+                    SupportSection()
+                }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
 
             AboutSection()
             Spacer(modifier = Modifier.height(SoltelematicSpacing.lg))

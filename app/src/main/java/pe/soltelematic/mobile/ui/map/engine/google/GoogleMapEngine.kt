@@ -53,6 +53,7 @@ import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.Geofence
 import pe.soltelematic.mobile.domain.model.GeofenceShape
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.ui.map.engine.GeofenceDraftPreview
 import pe.soltelematic.mobile.ui.map.engine.MapCameraController
 import pe.soltelematic.mobile.ui.map.engine.MapEngine
@@ -187,11 +188,16 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
         val routeSelectedPolyline = remember(routePolylines, routeSelectedLeg) {
             routePolylines?.firstOrNull { it.legIndex == routeSelectedLeg }
         }
+        val speedRanges = route?.speedRanges ?: SpeedRanges.DEFAULT
+        val speedColors = LocalSoltelematicColors.current
+        // Tramo en vivo: mismas bandas de velocidad que el resto de la línea, con transparencia para
+        // distinguirlo de lo ya confirmado por el servidor.
         val provisionalPath = route?.provisionalPath
-        val provisionalLatLngs = remember(provisionalPath) { provisionalPath?.map { it.toLatLng() }.orEmpty() }
-        val provisionalColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
-        val routeRuns = remember(routePolylines, routeSelectedLeg) {
-            routePolylines?.filter { it.legIndex != routeSelectedLeg }?.toRenderablePolylineRuns().orEmpty()
+        val provisionalRuns = remember(provisionalPath, speedRanges) {
+            provisionalPath?.toBandRunsLatLng(speedRanges).orEmpty()
+        }
+        val routeRuns = remember(routePolylines, routeSelectedLeg, speedRanges) {
+            routePolylines?.filter { it.legIndex != routeSelectedLeg }?.toRenderablePolylineRuns(speedRanges).orEmpty()
         }
 
         // contentPadding solo trae lo que MapScreen puede medir (barra+chips arriba, columna de
@@ -300,19 +306,19 @@ class GoogleMapEngine(private val iconCache: MarkerIconCache) : MapEngine {
             }
             // Continuación en vivo: se recompone sola cuando cambia provisionalPath, sin tocar las
             // polilíneas simplificadas de arriba (memoizadas por identidad de la lista).
-            if (provisionalLatLngs.size >= 2) {
+            provisionalRuns.forEach { (band, points) ->
                 Polyline(
-                    points = provisionalLatLngs,
-                    color = provisionalColor,
+                    points = points,
+                    color = band.toRouteColor(speedColors).copy(alpha = PROVISIONAL_ALPHA),
                     width = POLYLINE_WIDTH_PX,
                     zIndex = 0.25f,
                     clickable = false
                 )
             }
-            routeRuns.forEach { (colorHex, points) ->
+            routeRuns.forEach { (band, points) ->
                 Polyline(
                     points = points,
-                    color = (colorHex ?: DEFAULT_POLYLINE_COLOR).toComposeColor(),
+                    color = band.toRouteColor(speedColors),
                     width = POLYLINE_WIDTH_PX,
                     clickable = false
                 )

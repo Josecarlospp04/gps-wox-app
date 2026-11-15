@@ -347,13 +347,14 @@ fun MapScreen(
     // Solo cambia cuando entra un punto en vivo (provisional) o se refresca el recorrido: la lista de
     // polilíneas conserva su identidad, así el motor no recalcula la simplificación cada 7 s.
     val trackProvisional = todayTrack?.provisional
-    val routeOverlay = remember(todayTrack?.mapData, trackSelectedLeg, trackProvisional, todayTrack?.route) {
+    val routeOverlay = remember(todayTrack?.mapData, trackSelectedLeg, trackProvisional, todayTrack?.route, uiState.speedRanges) {
         todayTrack?.mapData?.let {
             RouteOverlay(
                 polylines = it.polylines,
                 markers = it.markers,
                 selectedLegIndex = trackSelectedLeg,
-                provisionalPath = todayTrack.provisionalPath()
+                provisionalPath = todayTrack.provisionalRoutePath(),
+                speedRanges = uiState.speedRanges
             )
         }
     }

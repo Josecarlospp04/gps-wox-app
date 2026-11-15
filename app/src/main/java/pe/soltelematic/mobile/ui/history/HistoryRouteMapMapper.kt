@@ -75,7 +75,7 @@ fun HistoryRoute.toRouteMapData(): RouteMapData {
 
     val polylines = legs.withIndex().mapNotNull { (index, leg) ->
         if (leg !is HistoryDriveLeg || leg.positions.size < 2) return@mapNotNull null
-        RoutePolyline(legIndex = index, points = leg.positions.map { RoutePoint(it.point, it.colorHex) })
+        RoutePolyline(legIndex = index, points = leg.positions.map { RoutePoint(it.point, it.speedText.toSpeedKphOrNull()) })
     }
 
     return RouteMapData(
@@ -202,6 +202,9 @@ private fun List<HistoryPlaybackPoint>.fillRunBearings(start: Int, end: Int, out
         if (bearing != null) lastValid = bearing
     }
 }
+
+/** positions[].s llega como texto numérico en km/h ("56"); vacío o no numérico = desconocida. */
+internal fun String?.toSpeedKphOrNull(): Double? = this?.trim()?.replace(',', '.')?.toDoubleOrNull()
 
 private fun isRoundTripAtSameStop(firstLeg: HistoryLeg?, lastLeg: HistoryLeg?): Boolean {
     if (firstLeg !is HistoryStopLeg || lastLeg !is HistoryStopLeg || firstLeg === lastLeg) return false

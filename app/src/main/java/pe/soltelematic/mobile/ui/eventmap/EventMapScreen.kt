@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.R
 import pe.soltelematic.mobile.core.format.normalizeSpeedUnitSuffix
 import pe.soltelematic.mobile.domain.model.AlertEvent
@@ -117,7 +118,9 @@ fun EventMapScreen(
                 playbackBearing = 0f,
                 unitIcon = null,
                 onCameraGesture = {},
-                mapType = uiState.mapType
+                mapType = uiState.mapType,
+                // Sin polilíneas: los límites de color no se usan en esta pantalla.
+                speedRanges = SpeedRanges.DEFAULT
             )
 
             if (event != null) {

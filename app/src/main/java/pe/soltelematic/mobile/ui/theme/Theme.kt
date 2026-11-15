@@ -134,6 +134,10 @@ fun SoltelematicTheme(
         statusOffline = statusOffline,
         statusOfflineWash = statusOffline.washOver(if (darkTheme) 0.16f else 0.12f, surface),
         accentText = accentText,
+        speedLow = if (darkTheme) SoltelematicSpeedLowDark else SoltelematicSpeedLowLight,
+        speedMedium = if (darkTheme) SoltelematicSpeedMediumDark else SoltelematicSpeedMediumLight,
+        speedHigh = if (darkTheme) SoltelematicSpeedHighDark else SoltelematicSpeedHighLight,
+        speedVeryHigh = if (darkTheme) SoltelematicSpeedVeryHighDark else SoltelematicSpeedVeryHighLight,
     )
 
     CompositionLocalProvider(LocalSoltelematicColors provides soltelematicColors) {

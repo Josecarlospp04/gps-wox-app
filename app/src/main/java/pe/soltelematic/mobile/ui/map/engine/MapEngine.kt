@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import pe.soltelematic.mobile.domain.model.Geofence
 import pe.soltelematic.mobile.domain.model.GeoPoint
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 
 /**
  * Vista mínima de un Asset para el motor de mapas. Deliberadamente no lleva velocidad,
@@ -49,7 +50,10 @@ data class RouteOverlay(
     val selectedLegIndex: Int? = null,
     // Polilínea provisional (puntos en vivo aún no cubiertos por el recorrido, ya con el ancla del
     // final del recorrido como primer punto); vacía = nada que dibujar.
-    val provisionalPath: List<GeoPoint> = emptyList()
+    // Cada punto con su velocidad (el ancla del final del recorrido va con velocidad null).
+    val provisionalPath: List<RoutePoint> = emptyList(),
+    // Límites de las bandas de color por velocidad vigentes (preferencia de Cuenta).
+    val speedRanges: SpeedRanges = SpeedRanges.DEFAULT
 )
 
 /**

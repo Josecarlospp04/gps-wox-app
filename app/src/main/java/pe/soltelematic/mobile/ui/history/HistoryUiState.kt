@@ -4,6 +4,7 @@ import pe.soltelematic.mobile.core.result.ApiError
 import pe.soltelematic.mobile.domain.model.AssetIcon
 import pe.soltelematic.mobile.domain.model.HistoryRoute
 import pe.soltelematic.mobile.domain.model.MapType
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 
 
 /**
@@ -22,6 +23,8 @@ data class HistoryUiState(
     // MapScreen: el historial no guarda un tipo propio, solo observa el compartido. NORMAL como
     // valor inicial mientras el DataStore emite el primero.
     val mapType: MapType = MapType.NORMAL,
+    // Reflejo de UserPreferencesDataStore.speedRanges (límites de color de la línea por velocidad).
+    val speedRanges: SpeedRanges = SpeedRanges.DEFAULT,
     val selectedLegIndex: Int? = null,
     val addresses: Map<Int, AddressResolution> = emptyMap(),
     // Puntos GPS originales (sin simplificar, ver HistoryRouteMapMapper.toPlaybackPoints) de todos

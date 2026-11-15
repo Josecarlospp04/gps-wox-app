@@ -88,6 +88,11 @@ class HistoryViewModel(
                 _uiState.update { it.copy(mapType = type) }
             }
         }
+        viewModelScope.launch {
+            userPreferencesDataStore.speedRanges.collect { ranges ->
+                _uiState.update { it.copy(speedRanges = ranges) }
+            }
+        }
         // Icono de la unidad para el marcador de reproducción (ver HistoryUiState.unitIcon) --
         // Room ya lo tiene desde el mapa en vivo/refresh de la flota, así que esto no dispara
         // ninguna llamada de red propia de Historial, solo observa lo que ya hay.

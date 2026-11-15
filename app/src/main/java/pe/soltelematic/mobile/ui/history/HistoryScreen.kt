@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.R
 import pe.soltelematic.mobile.core.result.ApiError
 import pe.soltelematic.mobile.domain.model.AssetIcon
@@ -175,7 +176,8 @@ fun HistoryScreen(
                     onSpeedMultiplierClick = viewModel::onSpeedMultiplierCycled,
                     onOpenParameterCharts = { onOpenParameterCharts(uiState.dateRange.from, uiState.dateRange.to) },
                     routeMapEngine = routeMapEngine,
-                    mapType = uiState.mapType
+                    mapType = uiState.mapType,
+                    speedRanges = uiState.speedRanges
                 )
             }
         }
@@ -320,7 +322,8 @@ private fun HistoryContent(
     onSpeedMultiplierClick: () -> Unit,
     onOpenParameterCharts: () -> Unit,
     routeMapEngine: RouteMapEngine,
-    mapType: MapType
+    mapType: MapType,
+    speedRanges: SpeedRanges
 ) {
     val cameraController = routeMapEngine.rememberCameraController()
 
@@ -373,7 +376,8 @@ private fun HistoryContent(
             playbackBearing = playbackBearings.getOrNull(playback.currentIndex) ?: 0f,
             unitIcon = unitIcon,
             onCameraGesture = { followPlaybackCamera = false },
-            mapType = mapType
+            mapType = mapType,
+            speedRanges = speedRanges
         )
         HistoryTimeline(
             legs = route.legs,

@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.core.graphics.ColorUtils
+import pe.soltelematic.mobile.domain.model.SpeedBand
 
 // Tokens de marca (blanco-etiquetable). El accent por defecto de SOLTELEMATIC es el mismo en
 // claro y oscuro; un BrandConfig puede sustituirlo en runtime (ver Theme.kt).
@@ -39,6 +40,17 @@ val SoltelematicStatusAlertDark = Color(0xFFF0574A)
 val SoltelematicStatusOfflineLight = Color(0xFF77736C)
 val SoltelematicStatusOfflineDark = Color(0xFF8A8781)
 
+// Bandas de velocidad de la línea del recorrido (verde / azul / naranja / rojo). Fijos: el usuario
+// solo cambia los límites, nunca los colores. Saturados para leerse sobre mapa claro y satélite.
+val SoltelematicSpeedLowLight = Color(0xFF2E9E4F)
+val SoltelematicSpeedLowDark = Color(0xFF3FCB6B)
+val SoltelematicSpeedMediumLight = Color(0xFF1E6FD9)
+val SoltelematicSpeedMediumDark = Color(0xFF4A94F0)
+val SoltelematicSpeedHighLight = Color(0xFFF57C00)
+val SoltelematicSpeedHighDark = Color(0xFFFF9F40)
+val SoltelematicSpeedVeryHighLight = Color(0xFFD32F2F)
+val SoltelematicSpeedVeryHighDark = Color(0xFFFF5A4D)
+
 /**
  * Colores que no caben en [androidx.compose.material3.ColorScheme]: los 4 estados de unidad
  * (con su "wash" de fondo suave) y los neutros/derivados propios del sistema.
@@ -55,7 +67,19 @@ data class SoltelematicColors(
     val statusOffline: Color,
     val statusOfflineWash: Color,
     val accentText: Color,
-)
+    val speedLow: Color,
+    val speedMedium: Color,
+    val speedHigh: Color,
+    val speedVeryHigh: Color,
+) {
+    /** Color fijo de una banda de velocidad (línea del recorrido y leyenda de Cuenta). */
+    fun speedColor(band: SpeedBand): Color = when (band) {
+        SpeedBand.LOW -> speedLow
+        SpeedBand.MEDIUM -> speedMedium
+        SpeedBand.HIGH -> speedHigh
+        SpeedBand.VERY_HIGH -> speedVeryHigh
+    }
+}
 
 val LocalSoltelematicColors = staticCompositionLocalOf<SoltelematicColors> {
     error("LocalSoltelematicColors no fue provisto: envuelve el contenido en SoltelematicTheme { }")

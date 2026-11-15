@@ -2,7 +2,6 @@ package pe.soltelematic.mobile.ui.map.engine.google
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import androidx.compose.ui.graphics.Color
 import com.google.android.gms.maps.model.BitmapDescriptor
@@ -11,16 +10,23 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.PolyUtil
 import kotlin.math.roundToInt
 import pe.soltelematic.mobile.domain.model.GeoPoint
+import pe.soltelematic.mobile.domain.model.SpeedBand
+import pe.soltelematic.mobile.domain.model.SpeedRanges
 import pe.soltelematic.mobile.ui.map.engine.RouteMarkerRole
 import pe.soltelematic.mobile.ui.map.engine.RoutePoint
 import pe.soltelematic.mobile.ui.map.engine.RoutePolyline
+import pe.soltelematic.mobile.ui.theme.SoltelematicColors
 
 // Dibujado de rutas compartido por GoogleRouteMapEngine (Historial) y GoogleMapEngine (modo
 // "Recorrido de hoy" del mapa principal). Extraído SIN cambios de lógica de GoogleRouteMapEngine.
 
 internal const val POLYLINE_WIDTH_PX = 10f
 internal const val SELECTED_POLYLINE_WIDTH_PX = 16f
-internal const val DEFAULT_POLYLINE_COLOR = "#757575" // gris neutro: positions.c ausente
+// Opacidad del tramo provisional en vivo (aún no confirmado por el servidor).
+internal const val PROVISIONAL_ALPHA = 0.65f
+
+// Gris neutro: velocidad desconocida (positions[].s ausente o no numérica).
+internal val NEUTRAL_POLYLINE_COLOR = Color(0xFF757575)
 
 // Un recorrido largo trae miles de posiciones (verificado con datos reales: 31,132 puntos en 7
 // días de una sola unidad) -- ver investigación de la corrección post-2B. Dibujar un Polyline
@@ -162,9 +168,9 @@ private fun buildRouteMarkerBitmap(
 }
 
 /**
- * Todo el recorrido no seleccionado, listo para dibujar: agrupado por color consecutivo y
- * simplificado, con presupuesto de puntos global (no por tramo -- lo que importa para memoria es
- * el total de objetos Polyline de la pantalla, no cuántos le tocan a cada viaje).
+ * Todo el recorrido no seleccionado, listo para dibujar: agrupado por banda de velocidad
+ * consecutiva y simplificado, con presupuesto de puntos global (no por tramo -- lo que importa para
+ * memoria es el total de objetos Polyline de la pantalla, no cuántos le tocan a cada viaje).
  *
  * Tres pasadas, cada una solo si la anterior no alcanzó el presupuesto:
  * 1. BASE_SIMPLIFY_TOLERANCE_METERS (conservador, ver nota arriba).
@@ -175,68 +181,85 @@ private fun buildRouteMarkerBitmap(
  *    sigue mostrando el día completo igual, esto solo recorta el dibujo del mapa -- pero la app
  *    nunca vuelve a crashear por esto.
  */
-internal fun List<RoutePolyline>.toRenderablePolylineRuns(): List<Pair<String?, List<LatLng>>> {
-    val baseRuns = toColorRuns(BASE_SIMPLIFY_TOLERANCE_METERS)
+internal fun List<RoutePolyline>.toRenderablePolylineRuns(ranges: SpeedRanges): List<Pair<SpeedBand?, List<LatLng>>> {
+    val baseRuns = toBandRuns(BASE_SIMPLIFY_TOLERANCE_METERS, ranges)
     if (baseRuns.sumOf { it.second.size } <= MAX_TOTAL_POLYLINE_POINTS) return baseRuns
 
-    val escalatedRuns = toColorRuns(ESCALATED_SIMPLIFY_TOLERANCE_METERS)
+    val escalatedRuns = toBandRuns(ESCALATED_SIMPLIFY_TOLERANCE_METERS, ranges)
     if (escalatedRuns.sumOf { it.second.size } <= MAX_TOTAL_POLYLINE_POINTS) return escalatedRuns
 
-    val truncated = mutableListOf<Pair<String?, List<LatLng>>>()
+    val truncated = mutableListOf<Pair<SpeedBand?, List<LatLng>>>()
     var budget = MAX_TOTAL_POLYLINE_POINTS
     for (run in escalatedRuns) {
         if (budget < 2) break
-        val (colorHex, points) = run
+        val (band, points) = run
         if (points.size <= budget) {
             truncated.add(run)
             budget -= points.size
         } else {
-            truncated.add(colorHex to points.take(budget))
+            truncated.add(band to points.take(budget))
             budget = 0
         }
     }
     return truncated
 }
 
-private fun List<RoutePolyline>.toColorRuns(toleranceMeters: Double): List<Pair<String?, List<LatLng>>> =
-    flatMap { it.points.toSimplifiedColorRuns(toleranceMeters) }
+private fun List<RoutePolyline>.toBandRuns(toleranceMeters: Double, ranges: SpeedRanges): List<Pair<SpeedBand?, List<LatLng>>> =
+    flatMap { it.points.toSimplifiedBandRuns(toleranceMeters, ranges) }
+
+/** Un tramo de línea consecutivo de una sola banda de velocidad (null = velocidad desconocida). */
+internal data class BandRun(val band: SpeedBand?, val points: List<RoutePoint>)
 
 /**
- * Agrupa puntos consecutivos del mismo color (positions[].c) en tramos y simplifica la geometría
- * de cada uno con Douglas-Peucker (PolyUtil.simplify, de android-maps-utils -- ya dependencia del
- * proyecto), devolviendo un color + lista de LatLng por tramo, listo para un solo Polyline().
- *
- * Cada tramo nuevo (salvo el primero) arranca repitiendo el último punto del tramo anterior:
- * Douglas-Peucker siempre conserva los extremos de la lista que recibe, así que ese punto
- * compartido sobrevive la simplificación en ambos tramos y la línea no queda con un hueco visible
- * donde cambia el color. Un tramo que queda en menos de 2 puntos tras esto se descarta -- no es
- * geometría válida para un Polyline, y el punto ya quedó representado como extremo del tramo
- * vecino.
+ * Agrupa puntos consecutivos de la misma banda de velocidad. La velocidad de cada tramo de línea es
+ * la del punto de LLEGADA: cada tramo nuevo (salvo el primero) arranca repitiendo el último punto del
+ * tramo anterior, así el segmento que cruza el límite entre bandas toma el color del punto al que
+ * llega y la línea no queda con un hueco visible donde cambia el color. Los tramos de un solo punto
+ * (típicamente el primero) no son geometría válida para un Polyline y los descarta quien dibuja.
  */
-private fun List<RoutePoint>.toSimplifiedColorRuns(toleranceMeters: Double): List<Pair<String?, List<LatLng>>> {
-    if (size < 2) return emptyList()
-
-    val runs = mutableListOf<MutableList<RoutePoint>>()
+internal fun List<RoutePoint>.groupByBand(ranges: SpeedRanges): List<BandRun> {
+    val runs = mutableListOf<Pair<SpeedBand?, MutableList<RoutePoint>>>()
     for (point in this) {
+        val band = ranges.bandFor(point.speedKph)
         val previousRun = runs.lastOrNull()
-        if (previousRun != null && previousRun.last().colorHex == point.colorHex) {
-            previousRun.add(point)
+        if (previousRun != null && previousRun.first == band) {
+            previousRun.second.add(point)
         } else {
-            runs.add(mutableListOf<RoutePoint>().apply {
-                if (previousRun != null) add(previousRun.last())
+            runs.add(band to mutableListOf<RoutePoint>().apply {
+                if (previousRun != null) add(previousRun.second.last())
                 add(point)
             })
         }
     }
+    return runs.map { BandRun(it.first, it.second) }
+}
 
-    return runs.mapNotNull { run ->
-        if (run.size < 2) return@mapNotNull null
-        val simplified = PolyUtil.simplify(run.map { it.point.toLatLng() }, toleranceMeters)
-        run.first().colorHex to simplified
+/**
+ * Agrupa por banda ([groupByBand]) y simplifica la geometría de cada tramo con Douglas-Peucker
+ * (PolyUtil.simplify, de android-maps-utils -- ya dependencia del proyecto), devolviendo banda +
+ * lista de LatLng por tramo, listo para un solo Polyline(). Douglas-Peucker siempre conserva los
+ * extremos de la lista que recibe, así que el punto compartido entre tramos sobrevive la
+ * simplificación en ambos lados.
+ */
+private fun List<RoutePoint>.toSimplifiedBandRuns(toleranceMeters: Double, ranges: SpeedRanges): List<Pair<SpeedBand?, List<LatLng>>> {
+    if (size < 2) return emptyList()
+    return groupByBand(ranges).mapNotNull { run ->
+        if (run.points.size < 2) return@mapNotNull null
+        run.band to PolyUtil.simplify(run.points.map { it.point.toLatLng() }, toleranceMeters)
     }
 }
 
+/**
+ * Tramos por banda SIN simplificar, para el tramo provisional en vivo (son pocos puntos, igual que la
+ * cola de la unidad).
+ */
+internal fun List<RoutePoint>.toBandRunsLatLng(ranges: SpeedRanges): List<Pair<SpeedBand?, List<LatLng>>> =
+    groupByBand(ranges)
+        .filter { it.points.size >= 2 }
+        .map { run -> run.band to run.points.map { it.point.toLatLng() } }
+
 private fun GeoPoint.toLatLng(): LatLng = LatLng(lat, lng)
 
-internal fun String.toComposeColor(): Color =
-    runCatching { Color(AndroidColor.parseColor(this)) }.getOrDefault(Color(AndroidColor.parseColor(DEFAULT_POLYLINE_COLOR)))
+/** Color fijo de la banda (tema); null = velocidad desconocida, gris neutro. */
+internal fun SpeedBand?.toRouteColor(colors: SoltelematicColors): Color =
+    if (this == null) NEUTRAL_POLYLINE_COLOR else colors.speedColor(this)
